@@ -1,0 +1,47 @@
+# UniSchedule — to'liq stek: PostgreSQL + backend API + frontend
+# Ishga tushirish:  docker compose up --build
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: unischedule
+      POSTGRES_PASSWORD: unischedule
+      POSTGRES_DB: unischedule
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432" # host 5432 bilan to'qnashmasin
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U unischedule"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./server
+    environment:
+      DATABASE_URL: postgresql://unischedule:unischedule@db:5432/unischedule?schema=public
+      NODE_ENV: production
+      PORT: 4000
+      JWT_SECRET: CHANGE_ME_IN_PROD_openssl_rand_hex_32
+      CLIENT_ORIGIN: http://localhost:8080
+      SEED_ON_START: "true" # birinchi marta demo ma'lumot + admin
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        VITE_API_URL: http://localhost:4000/api
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:

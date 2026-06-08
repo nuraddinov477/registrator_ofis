@@ -1,0 +1,208 @@
+// UniSchedule ma'lumotlar modeli
+// SQLite (hozir) — PostgreSQL'ga o'tish uchun provider = "postgresql" qiling.
+// Topshiriqdagi jadval-input strukturasini to'liq qamrab oladi:
+//   groups(size, direction_id) · teachers · subjects · workloads · rooms(capacity, type) · room_permissions
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // POSTGRES-READY: "postgresql" ga o'zgartiring
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Tashkiliy tuzilma ───────────────────────────
+
+model Faculty {
+  id          Int          @id @default(autoincrement())
+  name        String
+  code        String?
+  description String?
+  departments Department[]
+  specialties Specialty[]
+  groups      Group[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Department {
+  id        Int       @id @default(autoincrement())
+  name      String
+  code      String?
+  head      String?
+  faculty   Faculty?  @relation(fields: [facultyId], references: [id], onDelete: SetNull)
+  facultyId Int?
+  teachers  Teacher[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+// Yo'nalish / mutaxassislik = topshiriqdagi "direction_id"
+model Specialty {
+  id              Int              @id @default(autoincrement())
+  name            String
+  code            String?
+  form            String? // Kunduzgi / Sirtqi / Kechki
+  years           Int              @default(4)
+  faculty         Faculty?         @relation(fields: [facultyId], references: [id], onDelete: SetNull)
+  facultyId       Int?
+  groups          Group[]
+  roomPermissions RoomPermission[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+// ─────────────────────────── Resurslar ───────────────────────────
+
+model Teacher {
+  id              Int              @id @default(autoincrement())
+  fullName        String
+  position        String? // Assistent / Katta o'qituvchi / Dotsent / Professor
+  degree          String? // PhD / DSc
+  email           String?
+  department      Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId    Int?
+  workloads       Workload[]
+  roomPermissions RoomPermission[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model Subject {
+  id         Int        @id @default(autoincrement())
+  name       String
+  code       String?
+  type       String? // Majburiy / Tanlov
+  credit     Int        @default(3)
+  lecture    Int        @default(30)
+  practice   Int        @default(30)
+  semester   Int        @default(1)
+  // Yumshoq cheklash uchun: qiyin fanlar (1..5) ertalabki juftliklarga joylanadi
+  difficulty Int        @default(3)
+  workloads  Workload[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+}
+
+model Group {
+  id              Int              @id @default(autoincrement())
+  name            String
+  course          Int              @default(1)
+  size            Int              @default(25) // talabalar soni (topshiriq: size)
+  form            String?
+  faculty         Faculty?         @relation(fields: [facultyId], references: [id], onDelete: SetNull)
+  facultyId       Int?
+  specialty       Specialty?       @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  specialtyId     Int? // direction_id
+  workloads       Workload[]
+  roomPermissions RoomPermission[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model Building {
+  id        Int      @id @default(autoincrement())
+  name      String
+  floors    Int      @default(1)
+  address   String?
+  rooms     Room[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Room {
+  id          Int              @id @default(autoincrement())
+  name        String
+  capacity    Int              @default(30)
+  // Topshiriq 6: "umumiy" (hamma) | "maxsus" (faqat ruxsat bilan)
+  type        String           @default("umumiy")
+  kind        String? // Ma'ruza / Amaliy / Laboratoriya / Kompyuter
+  building    Building?        @relation(fields: [buildingId], references: [id], onDelete: SetNull)
+  buildingId  Int?
+  permissions RoomPermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+// Maxsus xona ruxsatnomasi (topshiriq 7): o'qituvchi / guruh / yo'nalishga beriladi
+model RoomPermission {
+  id          Int        @id @default(autoincrement())
+  room        Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId      Int
+  teacher     Teacher?   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  teacherId   Int?
+  group       Group?     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId     Int?
+  specialty   Specialty? @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+  specialtyId Int?
+  createdAt   DateTime   @default(now())
+}
+
+// ─────────────────────────── Ish yuklamasi (engine kirishi) ───────────────────────────
+
+model Workload {
+  id          Int      @id @default(autoincrement())
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId     Int
+  teacher     Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  teacherId   Int
+  subject     Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subjectId   Int
+  // haftalik_soatlar = haftadagi juftliklar soni (engine shuncha "event" yaratadi)
+  weeklyHours Int      @default(2)
+  semester    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─────────────────────────── Jadval chiqishi (engine natijasi) ───────────────────────────
+
+model SchedulingRun {
+  id        Int             @id @default(autoincrement())
+  semester  Int             @default(1)
+  status    String          @default("draft") // draft / running / done / failed
+  hardScore Int             @default(0) // qattiq cheklash buzilishlari
+  softScore Int             @default(0) // yumshoq cheklash jarimasi
+  entries   ScheduleEntry[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+// Chiqish formati: { group_id, teacher_id, subject_id, room_id, day, pair }
+model ScheduleEntry {
+  id        Int           @id @default(autoincrement())
+  run       SchedulingRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runId     Int
+  groupId   Int
+  teacherId Int
+  subjectId Int
+  roomId    Int
+  day       Int // 0..4 (Dushanba..Juma)
+  pair      Int // 1..6
+
+  @@index([runId])
+}
+
+// ─────────────────────────── Tizim ───────────────────────────
+
+model User {
+  id           Int      @id @default(autoincrement())
+  login        String   @unique
+  fullName     String
+  email        String?
+  role         String   @default("Fakultet operatori")
+  active       Boolean  @default(true)
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AuditLog {
+  id     Int      @id @default(autoincrement())
+  time   DateTime @default(now())
+  user   String   @default("admin")
+  action String
+  detail String
+  ip     String   @default("127.0.0.1")
+}

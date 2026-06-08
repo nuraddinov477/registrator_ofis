@@ -1,0 +1,35 @@
+{
+  "name": "unischedule-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "UniSchedule backend — REST API + jadval optimallashtirish engine poydevori",
+  "scripts": {
+    "dev": "node --watch --env-file=.env src/index.js",
+    "start": "node --env-file=.env src/index.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:reset": "prisma migrate reset --force",
+    "db:seed": "node --env-file=.env prisma/seed.js",
+    "db:studio": "prisma studio",
+    "solve": "node --env-file=.env src/engine/cli.js"
+  },
+  "prisma": {
+    "seed": "node --env-file=.env prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "bcryptjs": "^3.0.3",
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.10.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0"
+  }
+}
