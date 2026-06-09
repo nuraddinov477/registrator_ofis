@@ -1,0 +1,25 @@
+# UniSchedule backend — Render Blueprint (bepul Docker web service)
+# Render → New → Blueprint → reponi tanlang → DATABASE_URL va CLIENT_ORIGIN ni kiriting → Apply
+services:
+  - type: web
+    name: unischedule-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: ./server
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true # Render avtomatik kuchli secret yaratadi
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      # Neon PostgreSQL ulanish satri (dashboard'da kiritiladi — maxfiy)
+      - key: DATABASE_URL
+        sync: false
+      # Vercel frontend domeni (CORS uchun — keyin yangilanadi)
+      - key: CLIENT_ORIGIN
+        sync: false
