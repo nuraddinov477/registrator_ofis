@@ -4,7 +4,8 @@
 //   groups(size, direction_id) · teachers · subjects · workloads · rooms(capacity, type) · room_permissions
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {

@@ -6,6 +6,7 @@ RUN npm install
 
 FROM node:20-alpine AS build
 WORKDIR /app
+RUN apk add --no-cache openssl libc6-compat
 COPY --from=deps /app/node_modules ./node_modules
 COPY package*.json ./
 COPY prisma ./prisma
@@ -16,6 +17,7 @@ RUN node scripts/use-db.js postgresql && npx prisma generate
 
 FROM node:20-alpine AS runtime
 WORKDIR /app
+RUN apk add --no-cache openssl libc6-compat
 ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/prisma ./prisma
