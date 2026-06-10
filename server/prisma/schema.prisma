@@ -8,7 +8,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite" // POSTGRES-READY: "postgresql" ga o'zgartiring
+  provider = "postgresql" // POSTGRES-READY: "postgresql" ga o'zgartiring
   url      = env("DATABASE_URL")
 }
 
