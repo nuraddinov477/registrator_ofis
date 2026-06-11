@@ -1,0 +1,10 @@
+# Frontend (Vite) deploy uchun keraksiz narsalar
+node_modules
+server
+dist
+*.db
+.env
+.env.*
+Dockerfile.web
+docker-compose.yml
+nginx.conf
