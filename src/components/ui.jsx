@@ -102,6 +102,8 @@ export function Badge({ children, color = 'blue' }) {
     blue: 'bg-brand/15 text-brand',
     green: 'bg-emerald-500/15 text-emerald-500',
     gray: 'bg-slate-500/15 text-slate-400',
+    amber: 'bg-amber-500/15 text-amber-500',
+    red: 'bg-red-500/15 text-red-500',
   }
   return <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${map[color]}`}>{children}</span>
 }

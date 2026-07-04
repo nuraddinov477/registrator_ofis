@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { BookOpen, FileText, UserCog, ShieldCheck, Plus, Download, Pencil, Trash2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { BookOpen, FileText, UserCog, ShieldCheck, Plus, Pencil, Trash2 } from 'lucide-react'
 import { db, useCollection } from '../data/store'
+import { api, auth } from '../api/client'
 import { PageHeader, SearchBar, Table, Modal, Field, Badge } from '../components/ui'
 
 /* ---------- O'quv yuklamasi ---------- */
@@ -65,21 +66,173 @@ export function Loads() {
   )
 }
 
-/* ---------- Talabnomalar ---------- */
+/* ---------- Talabnomalar (kafedralararo ariza — real backend) ---------- */
 export function Requests() {
-  const requests = useCollection('requests')
+  const me = auth.user()
+  const [items, setItems] = useState([])
+  const [refs, setRefs] = useState({ departments: [], teachers: [], subjects: [], rooms: [] })
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState('')
   const [tab, setTab] = useState('all')
-  const tabs = [['all', 'Hammasi'], ['sent', 'Yuborilgan'], ['incoming', 'Kelgan (tasdiqlash)']]
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState({})
+  const [respond, setRespond] = useState(null) // javob beriladigan ariza
+  const [note, setNote] = useState('')
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const [reqs, departments, teachers, subjects, rooms] = await Promise.all([
+        api('/requests'), api('/departments'), api('/teachers'), api('/subjects'), api('/rooms'),
+      ])
+      setItems(reqs); setRefs({ departments, teachers, subjects, rooms }); setErr('')
+    } catch (e) { setErr(e.message) } finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [])
+
+  const create = async (e) => {
+    e.preventDefault()
+    if (!form.fromDepartmentId || !form.toDepartmentId) return alert('Kafedralarni tanlang')
+    if (form.fromDepartmentId === form.toDepartmentId) return alert("Kafedra o'ziga ariza yubora olmaydi")
+    try {
+      await api('/requests', { method: 'POST', body: form })
+      setOpen(false); setForm({}); load()
+    } catch (e) { alert(e.message) }
+  }
+
+  const sendResponse = async (decision) => {
+    try {
+      await api(`/requests/${respond.id}/respond`, { method: 'POST', body: { status: decision, note } })
+      setRespond(null); setNote(''); load()
+    } catch (e) { alert(e.message) }
+  }
+
+  const del = async (r) => {
+    if (!confirm(`#${r.id} arizani o'chirilsinmi? (tarixdan ham yo'qoladi)`)) return
+    try { await api(`/requests/${r.id}`, { method: 'DELETE' }); load() } catch (e) { alert(e.message) }
+  }
+
+  const tabs = [['all', 'Hammasi'], ['pending', 'Kutilmoqda'], ['accepted', 'Qabul qilingan'], ['rejected', 'Rad etilgan']]
+  const counts = (s) => items.filter((r) => r.status === s).length
+  const shown = tab === 'all' ? items : items.filter((r) => r.status === tab)
+  const stBadge = (s) => s === 'accepted' ? <Badge color="green">Qabul qilindi</Badge>
+    : s === 'rejected' ? <Badge color="red">Rad etildi</Badge>
+      : <Badge color="amber">Kutilmoqda</Badge>
+  const dt = (s) => (s ? new Date(s).toLocaleString('uz') : '—')
+
   return (
     <div>
-      <PageHeader title="Talabnomalar" subtitle="Kafedra oʻrtasidagi oʻquv yuklamasi soʻrovlari" icon={FileText}
-        action={<button className="btn-ghost"><Download size={15} /> Excel yuklab olish</button>} />
+      <PageHeader title="Talabnomalar" subtitle="Kafedralararo o'qituvchi/dars so'rovlari — butun tarix saqlanadi" icon={FileText}
+        count={items.length}
+        action={<button className="btn-primary" onClick={() => { setForm({}); setOpen(true) }}><Plus size={16} /> Yangi ariza</button>} />
+
+      {err && <div className="mb-4 rounded-lg bg-red-500/10 px-4 py-2 text-sm text-red-500">Xatolik: {err}</div>}
+
       <div className="mb-4 inline-flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800/60">
-        {tabs.map(([id, l]) => <button key={id} onClick={() => setTab(id)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${tab === id ? 'bg-brand text-white' : 'text-slate-500'}`}>{l}</button>)}
+        {tabs.map(([id, l]) => (
+          <button key={id} onClick={() => setTab(id)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${tab === id ? 'bg-brand text-white' : 'text-slate-500'}`}>
+            {l}{id !== 'all' && counts(id) > 0 ? ` (${counts(id)})` : ''}
+          </button>
+        ))}
       </div>
-      <Table columns={['Yuboruvchi kafedra', 'Qabul qiluvchi kafedra', 'Fan', 'Semestr', 'Holat', 'Sana']} rows={requests} empty="Talabnomalar yoʻq" renderRow={(r) => (
-        <tr key={r.id} className="border-b border-slate-100 dark:border-slate-800/60"><td className="px-4 py-3">{r.from}</td><td className="px-4 py-3">{r.to}</td><td className="px-4 py-3">{r.subject}</td><td className="px-4 py-3">{r.semester}</td><td className="px-4 py-3"><Badge>{r.status}</Badge></td><td className="px-4 py-3">{r.date}</td></tr>
-      )} />
+
+      <Table
+        columns={['#', 'Kimdan', 'Kimga', "Fan / O'qituvchi", 'Xona', 'Guruhlar', 'Holat', 'Sana', 'Amal']}
+        rows={shown}
+        empty={loading ? 'Yuklanmoqda...' : "Talabnomalar yo'q"}
+        renderRow={(r) => (
+          <tr key={r.id} className="border-b border-slate-100 align-top last:border-0 dark:border-slate-800/60">
+            <td className="px-4 py-3 text-slate-400">#{r.id}</td>
+            <td className="px-4 py-3 font-medium">{r.fromDepartment?.name || '—'}</td>
+            <td className="px-4 py-3">{r.toDepartment?.name || '—'}</td>
+            <td className="px-4 py-3">
+              <div>{r.subject?.name || '—'}</div>
+              {r.teacher?.fullName && <div className="text-xs text-slate-400">{r.teacher.fullName}</div>}
+            </td>
+            <td className="px-4 py-3">{r.room?.name || '—'}</td>
+            <td className="px-4 py-3">{r.targetGroups || (r.course ? `${r.course}-kurs` : '—')}</td>
+            <td className="px-4 py-3">
+              {stBadge(r.status)}
+              {r.respondedBy && <div className="mt-1 text-xs text-slate-400">{r.respondedBy}{r.responseNote ? `: ${r.responseNote}` : ''}</div>}
+            </td>
+            <td className="px-4 py-3 text-slate-400">{dt(r.createdAt)}</td>
+            <td className="px-4 py-3">
+              <div className="flex items-center gap-1">
+                {r.status === 'pending'
+                  ? <button onClick={() => { setRespond(r); setNote('') }} className="rounded-md bg-brand px-2.5 py-1 text-xs font-medium text-white">Javob</button>
+                  : <span className="text-xs text-slate-400">—</span>}
+                {me?.role === 'Super Admin' && (
+                  <button onClick={() => del(r)} title="O'chirish" className="rounded-md p-1.5 text-slate-400 hover:text-red-500"><Trash2 size={15} /></button>
+                )}
+              </div>
+            </td>
+          </tr>
+        )}
+      />
+
+      {/* Yangi ariza */}
+      <Modal open={open} onClose={() => setOpen(false)} title="Yangi ariza — kafedraga so'rov">
+        <form onSubmit={create} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Yuboruvchi kafedra *">
+              <select className="input" required value={form.fromDepartmentId || ''} onChange={(e) => setForm({ ...form, fromDepartmentId: e.target.value })}>
+                <option value="">—</option>{refs.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Qabul qiluvchi kafedra *">
+              <select className="input" required value={form.toDepartmentId || ''} onChange={(e) => setForm({ ...form, toDepartmentId: e.target.value })}>
+                <option value="">—</option>{refs.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Fan">
+              <select className="input" value={form.subjectId || ''} onChange={(e) => setForm({ ...form, subjectId: e.target.value })}>
+                <option value="">—</option>{refs.subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </Field>
+            <Field label="O'qituvchi">
+              <select className="input" value={form.teacherId || ''} onChange={(e) => setForm({ ...form, teacherId: e.target.value })}>
+                <option value="">—</option>{refs.teachers.map((t) => <option key={t.id} value={t.id}>{t.fullName}</option>)}
+              </select>
+            </Field>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Xona">
+              <select className="input" value={form.roomId || ''} onChange={(e) => setForm({ ...form, roomId: e.target.value })}>
+                <option value="">—</option>{refs.rooms.map((rm) => <option key={rm.id} value={rm.id}>{rm.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Kurs"><input className="input" type="number" value={form.course || ''} onChange={(e) => setForm({ ...form, course: e.target.value })} /></Field>
+            <Field label="Haftalik soat"><input className="input" type="number" value={form.weeklyHours || ''} onChange={(e) => setForm({ ...form, weeklyHours: e.target.value })} /></Field>
+          </div>
+          <Field label="Guruhlar"><input className="input" placeholder="masalan: IT-21, IT-22" value={form.targetGroups || ''} onChange={(e) => setForm({ ...form, targetGroups: e.target.value })} /></Field>
+          <Field label="Izoh / so'rov matni"><textarea className="input" rows={3} value={form.message || ''} onChange={(e) => setForm({ ...form, message: e.target.value })} /></Field>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>Bekor</button>
+            <button type="submit" className="btn-primary">Yuborish</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Javob berish */}
+      <Modal open={!!respond} onClose={() => setRespond(null)} title={`Arizaga javob — #${respond?.id || ''}`}>
+        {respond && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-slate-100 p-3 text-sm dark:bg-slate-800/60">
+              <div><b>{respond.fromDepartment?.name}</b> → <b>{respond.toDepartment?.name}</b></div>
+              {respond.subject?.name && <div className="mt-1">Fan: {respond.subject.name}{respond.teacher?.fullName ? ` · ${respond.teacher.fullName}` : ''}</div>}
+              <div className="mt-1 text-slate-500 dark:text-slate-400">{respond.message || '—'}</div>
+            </div>
+            <Field label="Javob izohi (ixtiyoriy)"><textarea className="input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+            <div className="flex justify-end gap-2 pt-2">
+              <button className="btn-ghost" onClick={() => setRespond(null)}>Bekor</button>
+              <button className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600" onClick={() => sendResponse('rejected')}>Rad etish</button>
+              <button className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600" onClick={() => sendResponse('accepted')}>Qabul qilish</button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

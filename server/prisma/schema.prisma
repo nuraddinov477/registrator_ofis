@@ -35,6 +35,8 @@ model Department {
   faculty   Faculty?  @relation(fields: [facultyId], references: [id], onDelete: SetNull)
   facultyId Int?
   teachers  Teacher[]
+  requestsFrom TeachingRequest[] @relation("RequestFrom")
+  requestsTo   TeachingRequest[] @relation("RequestTo")
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
@@ -66,6 +68,7 @@ model Teacher {
   departmentId    Int?
   workloads       Workload[]
   roomPermissions RoomPermission[]
+  teachingRequests TeachingRequest[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 }
@@ -82,6 +85,7 @@ model Subject {
   // Yumshoq cheklash uchun: qiyin fanlar (1..5) ertalabki juftliklarga joylanadi
   difficulty Int        @default(3)
   workloads  Workload[]
+  teachingRequests TeachingRequest[]
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 }
@@ -122,6 +126,7 @@ model Room {
   building    Building?        @relation(fields: [buildingId], references: [id], onDelete: SetNull)
   buildingId  Int?
   permissions RoomPermission[]
+  teachingRequests TeachingRequest[]
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 }
@@ -206,4 +211,37 @@ model AuditLog {
   action String
   detail String
   ip     String   @default("127.0.0.1")
+}
+
+// ─────────────────────────── Kafedralararo ariza ───────────────────────────
+// Bir kafedra boshqasidan o'qituvchi/dars so'raydi (masalan: "ingliz tili
+// o'qituvchingiz shu xonada shu guruhlarga dars bersin"). Ikkinchi taraf qabul
+// yoki rad qiladi. Butun tarix sana bilan saqlanadi — Super Admin ko'radi.
+model TeachingRequest {
+  id               Int         @id @default(autoincrement())
+  fromDepartment   Department? @relation("RequestFrom", fields: [fromDepartmentId], references: [id], onDelete: SetNull)
+  fromDepartmentId Int?
+  toDepartment     Department? @relation("RequestTo", fields: [toDepartmentId], references: [id], onDelete: SetNull)
+  toDepartmentId   Int?
+  teacher          Teacher?    @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  teacherId        Int?
+  subject          Subject?    @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  subjectId        Int?
+  room             Room?       @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  roomId           Int?
+  course           Int? // qaysi kurs (1..4)
+  targetGroups     String? // qaysi guruhlar — erkin matn: "IT-21, IT-22"
+  weeklyHours      Int? // haftalik soat (juftlik)
+  message          String? // so'rov izohi
+  status           String      @default("pending") // pending | accepted | rejected
+  responseNote     String? // javob izohi
+  respondedBy      String? // kim javob berdi (login)
+  respondedAt      DateTime?
+  createdBy        String? // kim yaratdi (login)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([status])
+  @@index([fromDepartmentId])
+  @@index([toDepartmentId])
 }

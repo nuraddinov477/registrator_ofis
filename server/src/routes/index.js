@@ -4,6 +4,7 @@ import { asyncHandler } from '../lib/asyncHandler.js'
 import { schemas } from '../validation/schemas.js'
 import { prisma } from '../db.js'
 import { scheduleRouter } from './schedule.js'
+import { requestsRouter } from './requests.js'
 import { requireRole } from '../auth/middleware.js'
 
 const stripPassword = (u) => { const { passwordHash, ...rest } = u; return rest }
@@ -40,6 +41,9 @@ export function buildRoutes() {
 
   // Jadval optimallashtirish engine
   router.use('/schedule', scheduleRouter)
+
+  // Kafedralararo ariza (o'qituvchi/dars so'rovi)
+  router.use('/requests', requestsRouter())
 
   // Audit logi — faqat o'qish uchun
   router.get('/audit', asyncHandler(async (req, res) => {
