@@ -244,8 +244,8 @@ export function UsersPage() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({})
-  const openAdd = () => { setEditing(null); setForm({ login: '', fullName: '', email: '', role: 'Fakultet operatori', active: true }); setOpen(true) }
-  const openEdit = (u) => { setEditing(u); setForm(u); setOpen(true) }
+  const openAdd = () => { setEditing(null); setForm({ login: '', fullName: '', email: '', role: 'Fakultet operatori', active: true, password: '' }); setOpen(true) }
+  const openEdit = (u) => { setEditing(u); setForm({ ...u, password: '' }); setOpen(true) }
   const save = (e) => { e.preventDefault(); editing ? db.update('users', editing.id, form) : db.add('users', form); setOpen(false) }
 
   return (
@@ -274,6 +274,11 @@ export function UsersPage() {
           <Field label="F.I"><input className="input" required value={form.fullName || ''} onChange={(e) => setForm({ ...form, fullName: e.target.value })} /></Field>
           <Field label="Email"><input className="input" value={form.email || ''} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
           <Field label="Rol"><select className="input" value={form.role || ''} onChange={(e) => setForm({ ...form, role: e.target.value })}>{['Super Admin', 'Fakultet operatori', 'Kafedra mudiri', 'Oʻqituvchi'].map((r) => <option key={r}>{r}</option>)}</select></Field>
+          <Field label={editing ? 'Yangi parol' : 'Parol'}>
+            <input className="input" type="password" required={!editing} value={form.password || ''}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              placeholder={editing ? "bo'sh qoldirsangiz o'zgarmaydi" : 'kamida 4 belgi'} />
+          </Field>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> Faol</label>
           <div className="flex justify-end gap-2 pt-2"><button type="button" className="btn-ghost" onClick={() => setOpen(false)}>Bekor</button><button type="submit" className="btn-primary">Saqlash</button></div>
         </form>

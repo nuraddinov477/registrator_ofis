@@ -7,7 +7,8 @@ const identity = (x) => x
 // Bitta entity uchun to'liq CRUD marshrutlarini hosil qiluvchi generic factory.
 //   mutationGuard — POST/PUT/DELETE oldidan qo'shimcha middleware (masalan rol tekshiruvi)
 //   sanitize      — javobdan maxfiy maydonlarni olib tashlash (masalan passwordHash)
-export function crudRouter({ model, label, createSchema, updateSchema, include, orderBy = { id: 'asc' }, mutationGuard = [], sanitize = identity }) {
+//   transform     — parse'dan keyin, DB'ga yozishdan oldin ma'lumotni o'zgartirish (masalan parolni hash qilish)
+export function crudRouter({ model, label, createSchema, updateSchema, include, orderBy = { id: 'asc' }, mutationGuard = [], sanitize = identity, transform = async (d) => d }) {
   const router = Router()
   const delegate = prisma[model]
   const labelOf = (row) => row?.name ?? row?.fullName ?? row?.login ?? row?.id
@@ -27,14 +28,14 @@ export function crudRouter({ model, label, createSchema, updateSchema, include, 
   }))
 
   router.post('/', ...mutationGuard, asyncHandler(async (req, res) => {
-    const data = createSchema.parse(req.body)
+    const data = await transform(createSchema.parse(req.body))
     const row = await delegate.create({ data, include })
     await audit(`Qo'shildi: ${label}`, labelOf(row), req)
     res.status(201).json(clean(row))
   }))
 
   router.put('/:id', ...mutationGuard, asyncHandler(async (req, res) => {
-    const data = updateSchema.parse(req.body)
+    const data = await transform(updateSchema.parse(req.body))
     const row = await delegate.update({ where: { id: Number(req.params.id) }, data, include })
     await audit(`Tahrirlandi: ${label}`, labelOf(row), req)
     res.json(clean(row))

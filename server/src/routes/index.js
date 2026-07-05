@@ -6,8 +6,17 @@ import { prisma } from '../db.js'
 import { scheduleRouter } from './schedule.js'
 import { requestsRouter } from './requests.js'
 import { requireRole } from '../auth/middleware.js'
+import { hashPassword } from '../auth/password.js'
 
 const stripPassword = (u) => { const { passwordHash, ...rest } = u; return rest }
+
+// Foydalanuvchi yozishdan oldin: password berilgan bo'lsa hash qilib passwordHash'ga o'tkazamiz,
+// password maydonini olib tashlaymiz (u DB ustuni emas). Bo'sh parolda passwordHash tegilmaydi.
+const userTransform = async (data) => {
+  if (data.password) data.passwordHash = await hashPassword(data.password)
+  delete data.password
+  return data
+}
 
 // Resurslar konfiguratsiyasi — har bir entity bitta qatorda
 const resources = [
@@ -22,7 +31,7 @@ const resources = [
   { path: 'room-permissions', model: 'roomPermission', label: 'Xona ruxsati', schema: schemas.roomPermission, include: { room: true, teacher: true, group: true, specialty: true } },
   { path: 'workloads', model: 'workload', label: 'Yuklama', schema: schemas.workload, include: { group: true, teacher: true, subject: true } },
   // Foydalanuvchilar: faqat Super Admin o'zgartiradi, parol hech qachon qaytarilmaydi
-  { path: 'users', model: 'user', label: 'Foydalanuvchi', schema: schemas.user, mutationGuard: [requireRole('Super Admin')], sanitize: stripPassword },
+  { path: 'users', model: 'user', label: 'Foydalanuvchi', schema: schemas.user, mutationGuard: [requireRole('Super Admin')], sanitize: stripPassword, transform: userTransform },
 ]
 
 export function buildRoutes() {
@@ -34,7 +43,7 @@ export function buildRoutes() {
       crudRouter({
         model: r.model, label: r.label,
         createSchema: r.schema, updateSchema: r.schema.partial(),
-        include: r.include, mutationGuard: r.mutationGuard, sanitize: r.sanitize,
+        include: r.include, mutationGuard: r.mutationGuard, sanitize: r.sanitize, transform: r.transform,
       }),
     )
   }

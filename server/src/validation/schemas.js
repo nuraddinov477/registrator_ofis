@@ -39,5 +39,6 @@ export const schemas = {
 
   workload: z.object({ groupId: reqInt, teacherId: reqInt, subjectId: reqInt, weeklyHours: intDef(2), semester: intDef(1) }),
 
-  user: z.object({ login: name, fullName: name, email: optStr, role: optStr, active: bool }),
+  // password: yaratishda/parolni o'zgartirishda beriladi; bo'sh bo'lsa passwordHash tegilmaydi
+  user: z.object({ login: name, fullName: name, email: optStr, role: optStr, active: bool, password: optStr }),
 }
