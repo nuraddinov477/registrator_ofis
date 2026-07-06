@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { crudRouter } from '../lib/crudRouter.js'
 import { asyncHandler } from '../lib/asyncHandler.js'
 import { schemas } from '../validation/schemas.js'
-import { prisma } from '../db.js'
+import { prisma, audit } from '../db.js'
 import { scheduleRouter } from './schedule.js'
 import { requestsRouter } from './requests.js'
 import { requireRole } from '../auth/middleware.js'
@@ -54,9 +54,24 @@ export function buildRoutes() {
   // Kafedralararo ariza (o'qituvchi/dars so'rovi)
   router.use('/requests', requestsRouter())
 
-  // Audit logi — faqat o'qish uchun
-  router.get('/audit', asyncHandler(async (req, res) => {
-    res.json(await prisma.auditLog.findMany({ orderBy: { id: 'desc' }, take: 200 }))
+  // Audit logi — tizimdagi barcha o'zgarishlar tarixi.
+  // Faqat Super Admin ko'radi. Tarix hech qachon avtomatik o'chmaydi —
+  // faqat Super Admin qo'lda o'chirsagina o'chadi (butun tarix qaytariladi, cheklovsiz).
+  router.get('/audit', requireRole('Super Admin'), asyncHandler(async (req, res) => {
+    res.json(await prisma.auditLog.findMany({ orderBy: { id: 'desc' } }))
+  }))
+
+  // Bitta yozuvni o'chirish — faqat Super Admin
+  router.delete('/audit/:id', requireRole('Super Admin'), asyncHandler(async (req, res) => {
+    await prisma.auditLog.delete({ where: { id: Number(req.params.id) } })
+    res.status(204).end()
+  }))
+
+  // Butun tarixni tozalash — faqat Super Admin. Tozalash amali izi qoladi (hisobdorlik uchun).
+  router.delete('/audit', requireRole('Super Admin'), asyncHandler(async (req, res) => {
+    const { count } = await prisma.auditLog.deleteMany({})
+    await audit('Tozalandi: Audit logi', `${count} ta yozuv o'chirildi`, req)
+    res.json({ deleted: count })
   }))
 
   // Statistika — Dashboard uchun

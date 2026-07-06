@@ -19,8 +19,8 @@ const nav = [
   { to: '/groups', label: 'Akademik guruhlar', icon: Network },
   { to: '/rooms', label: 'Bino va xonalar', icon: Home },
   { to: '/schedule', label: 'Dars jadvali', icon: CalendarDays },
-  { to: '/users', label: 'Foydalanuvchilar', icon: UserCog },
-  { to: '/audit', label: 'Audit logi', icon: ShieldCheck },
+  { to: '/users', label: 'Foydalanuvchilar', icon: UserCog, admin: true },
+  { to: '/audit', label: 'Audit logi', icon: ShieldCheck, admin: true },
 ]
 
 function useTheme() {
@@ -36,6 +36,9 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [dark, toggleTheme] = useTheme()
   const location = useLocation()
+  // Admin-only bo'limlar (Foydalanuvchilar, Audit logi) faqat Super Admin'ga ko'rinadi
+  const isSuperAdmin = auth.user()?.role === 'Super Admin'
+  const visibleNav = nav.filter((n) => !n.admin || isSuperAdmin)
   const current = nav.find((n) => (n.end ? location.pathname === n.to : location.pathname.startsWith(n.to) && n.to !== '/'))?.label || 'Dashboard'
 
   return (
@@ -50,7 +53,7 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {nav.map((item) => (
+          {visibleNav.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

@@ -291,11 +291,25 @@ export function UsersPage() {
 export function Audit() {
   const audit = useCollection('audit')
   const [q, setQ] = useState('')
+  const me = auth.user()
+  const isSuperAdmin = me?.role === 'Super Admin'
+
+  const clearAll = async () => {
+    if (!confirm(`Butun tarix (${audit.length} ta yozuv) o'chiriladi. Bu amalni qaytarib bo'lmaydi. Davom etilsinmi?`)) return
+    try { await db.clear('audit') } catch (e) { alert(e.message) }
+  }
+
+  const columns = ['Vaqt', 'Foydalanuvchi', 'Amal', "Bo'lim", 'Tafsilot', 'IP']
+  if (isSuperAdmin) columns.push('Amal')
+
   return (
     <div>
-      <PageHeader title="Audit logi" subtitle={`Tizimda qilingan barcha oʻzgartirishlar tarixi — ${audit.length} ta yozuv`} icon={ShieldCheck} />
+      <PageHeader title="Audit logi" subtitle={`Tizimda qilingan barcha oʻzgartirishlar tarixi — ${audit.length} ta yozuv`} icon={ShieldCheck}
+        action={isSuperAdmin && audit.length > 0
+          ? <button onClick={clearAll} className="inline-flex items-center gap-1.5 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600"><Trash2 size={16} /> Tarixni tozalash</button>
+          : null} />
       <SearchBar value={q} onChange={setQ} placeholder="Foydalanuvchi yoki maʼlumot..." />
-      <Table columns={['Vaqt', 'Foydalanuvchi', 'Amal', "Bo'lim", 'Tafsilot', 'IP']}
+      <Table columns={columns}
         rows={audit.filter((a) => (a.action + a.detail + a.user).toLowerCase().includes(q.toLowerCase()))}
         empty="Yozuvlar topilmadi"
         renderRow={(a) => (
@@ -306,6 +320,12 @@ export function Audit() {
             <td className="px-4 py-3"><Badge color="gray">{a.action.split(':')[1]?.trim() || '—'}</Badge></td>
             <td className="px-4 py-3 text-slate-400">{a.detail}</td>
             <td className="px-4 py-3 text-slate-400">{a.ip}</td>
+            {isSuperAdmin && (
+              <td className="px-4 py-3">
+                <button onClick={() => confirm("Bu yozuv o'chirilsinmi?") && db.remove('audit', a.id)}
+                  className="rounded-md p-1.5 text-slate-400 hover:text-red-500"><Trash2 size={15} /></button>
+              </td>
+            )}
           </tr>
         )} />
     </div>

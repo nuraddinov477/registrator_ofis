@@ -12,7 +12,8 @@ export async function audit(action, detail, req) {
         action,
         detail: String(detail ?? ''),
         ip: req?.ip ?? '127.0.0.1',
-        user: req?.headers?.['x-user'] ?? 'admin',
+        // Kim o'zgartirdi — autentifikatsiyadan kelgan haqiqiy foydalanuvchi (login)
+        user: req?.user?.login ?? req?.headers?.['x-user'] ?? 'tizim',
       },
     })
   } catch {
