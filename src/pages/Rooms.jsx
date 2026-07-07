@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { db, useCollection } from '../data/store'
+import { canWrite } from '../lib/access'
 import { SearchBar, Table, Modal, Field, Badge } from '../components/ui'
 
 export default function Rooms() {
@@ -14,6 +15,7 @@ export default function Rooms() {
 
   const isB = tab === 'buildings'
   const coll = isB ? 'buildings' : 'rooms'
+  const writable = canWrite(coll)
   const list = (isB ? buildings : rooms).filter((r) => Object.values(r).join(' ').toLowerCase().includes(q.toLowerCase()))
 
   const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '' } : { name: '', buildingId: '', capacity: 30, type: 'Maʼruza' }); setOpen(true) }
@@ -36,7 +38,7 @@ export default function Rooms() {
     <div>
       <div className="mb-5 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Bino va xonalar</h1>
-        <button className="btn-primary" onClick={openAdd}><Plus size={16} /> {isB ? 'Bino' : 'Xona'} qo'shish</button>
+        {writable && <button className="btn-primary" onClick={openAdd}><Plus size={16} /> {isB ? 'Bino' : 'Xona'} qo'shish</button>}
       </div>
       <SearchBar value={q} onChange={setQ} />
       <div className="mb-4 inline-flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800/60">
@@ -45,7 +47,7 @@ export default function Rooms() {
       </div>
 
       <Table
-        columns={isB ? ['Nomi', 'Qavatlar', 'Manzil', 'Amallar'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Amallar']}
+        columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi']), ...(writable ? ['Amallar'] : [])]}
         rows={list}
         renderRow={(r) => (
           <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/30">
@@ -58,12 +60,14 @@ export default function Rooms() {
               <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.capacity}</td>
               <td className="px-4 py-3"><Badge>{r.type}</Badge></td>
             </>}
-            <td className="px-4 py-3">
-              <div className="flex gap-1">
-                <button onClick={() => openEdit(r)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand dark:hover:bg-slate-800"><Pencil size={15} /></button>
-                <button onClick={() => confirm("O'chirilsinmi?") && db.remove(coll, r.id)} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/40"><Trash2 size={15} /></button>
-              </div>
-            </td>
+            {writable && (
+              <td className="px-4 py-3">
+                <div className="flex gap-1">
+                  <button onClick={() => openEdit(r)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand dark:hover:bg-slate-800"><Pencil size={15} /></button>
+                  <button onClick={() => confirm("O'chirilsinmi?") && db.remove(coll, r.id)} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/40"><Trash2 size={15} /></button>
+                </div>
+              </td>
+            )}
           </tr>
         )}
       />

@@ -20,11 +20,17 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   await audit('Tizimga kirdi', login, req)
   res.json({
     token: signToken(user),
-    user: { id: user.id, login: user.login, fullName: user.fullName, role: user.role },
+    user: {
+      id: user.id, login: user.login, fullName: user.fullName, role: user.role,
+      facultyId: user.facultyId, departmentId: user.departmentId, teacherId: user.teacherId,
+    },
   })
 }))
 
 // GET /api/auth/me — joriy foydalanuvchi
 authRouter.get('/me', requireAuth, (req, res) => {
-  res.json({ id: req.user.sub, login: req.user.login, fullName: req.user.name, role: req.user.role })
+  res.json({
+    id: req.user.sub, login: req.user.login, fullName: req.user.name, role: req.user.role,
+    facultyId: req.user.facultyId ?? null, departmentId: req.user.departmentId ?? null, teacherId: req.user.teacherId ?? null,
+  })
 })

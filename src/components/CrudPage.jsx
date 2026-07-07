@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { db, useCollection } from '../data/store'
+import { canWrite } from '../lib/access'
 import { PageHeader, SearchBar, Table, Modal, Field } from './ui'
 
 const empty = (fields) => Object.fromEntries(fields.map((f) => [f.name, f.default ?? '']))
 
 export default function CrudPage({ title, subtitle, icon, collection, fields, columns, renderCells }) {
   const rows = useCollection(collection)
+  const writable = canWrite(collection)
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -35,25 +37,27 @@ export default function CrudPage({ title, subtitle, icon, collection, fields, co
         subtitle={subtitle}
         icon={icon}
         count={rows.length}
-        action={<button className="btn-primary" onClick={openAdd}><Plus size={16} /> Qo'shish</button>}
+        action={writable ? <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Qo'shish</button> : null}
       />
       <SearchBar value={q} onChange={setQ} />
       <Table
-        columns={[...columns, 'Amallar']}
+        columns={writable ? [...columns, 'Amallar'] : columns}
         rows={filtered}
         renderRow={(row) => (
           <tr key={row.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/30">
             {renderCells(row)}
-            <td className="px-4 py-3">
-              <div className="flex items-center gap-1">
-                <button onClick={() => openEdit(row)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand dark:hover:bg-slate-800">
-                  <Pencil size={15} />
-                </button>
-                <button onClick={() => confirm("O'chirishni tasdiqlaysizmi?") && db.remove(collection, row.id)} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/40">
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            </td>
+            {writable && (
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-1">
+                  <button onClick={() => openEdit(row)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand dark:hover:bg-slate-800">
+                    <Pencil size={15} />
+                  </button>
+                  <button onClick={() => confirm("O'chirishni tasdiqlaysizmi?") && db.remove(collection, row.id)} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/40">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </td>
+            )}
           </tr>
         )}
       />

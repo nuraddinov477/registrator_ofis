@@ -23,6 +23,7 @@ model Faculty {
   departments Department[]
   specialties Specialty[]
   groups      Group[]
+  users       User[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
@@ -35,6 +36,7 @@ model Department {
   faculty   Faculty?  @relation(fields: [facultyId], references: [id], onDelete: SetNull)
   facultyId Int?
   teachers  Teacher[]
+  users        User[]
   requestsFrom TeachingRequest[] @relation("RequestFrom")
   requestsTo   TeachingRequest[] @relation("RequestTo")
   createdAt DateTime  @default(now())
@@ -69,6 +71,7 @@ model Teacher {
   workloads       Workload[]
   roomPermissions RoomPermission[]
   teachingRequests TeachingRequest[]
+  users           User[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 }
@@ -193,15 +196,23 @@ model ScheduleEntry {
 // ─────────────────────────── Tizim ───────────────────────────
 
 model User {
-  id           Int      @id @default(autoincrement())
-  login        String   @unique
+  id           Int         @id @default(autoincrement())
+  login        String      @unique
   fullName     String
   email        String?
-  role         String   @default("Fakultet operatori")
-  active       Boolean  @default(true)
+  role         String      @default("Fakultet operatori")
+  active       Boolean     @default(true)
   passwordHash String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  // Rol qamrovi (scoping): userni o'z birligiga bog'laydi.
+  //   Fakultet operatori → facultyId, Kafedra mudiri → departmentId, Oʻqituvchi → teacherId
+  faculty      Faculty?    @relation(fields: [facultyId], references: [id], onDelete: SetNull)
+  facultyId    Int?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId Int?
+  teacher      Teacher?    @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  teacherId    Int?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 }
 
 model AuditLog {

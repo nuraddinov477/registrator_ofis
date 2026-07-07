@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Zap, Loader2, RefreshCw, CalendarDays } from 'lucide-react'
 import { api } from '../api/client'
+import { roleOf, ROLES } from '../lib/access'
 import { Modal, Field, Badge } from '../components/ui'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -27,6 +28,10 @@ export default function Schedule() {
   const [seconds, setSeconds] = useState(5)
   const [busy, setBusy] = useState('') // generatsiya davom etayotgan bo'lsa — holat matni
 
+  const role = roleOf()
+  const isTeacher = role === ROLES.TEACHER
+  const canGenerate = role === ROLES.SUPER || role === ROLES.OPERATOR
+
   const run = runs.find((r) => r.id === runId) || null
 
   // Boshlang'ich: run'lar ro'yxati + guruhlar. Eng oxirgi tayyor jadval tanlanadi.
@@ -43,14 +48,18 @@ export default function Schedule() {
   useEffect(() => { loadMeta() }, [])
 
   // Run yoki guruh o'zgarsa — jadvalni qayta yuklaymiz.
+  // O'qituvchi rolida: o'z jadvali (teacher-grid, teacherId token'dan). Boshqalar: guruh jadvali.
   useEffect(() => {
-    if (!runId || !groupId) { setGrid(null); return }
+    if (!runId || (!isTeacher && !groupId)) { setGrid(null); return }
     let alive = true
-    api(`/schedule/runs/${runId}/grid?groupId=${groupId}`)
+    const url = isTeacher
+      ? `/schedule/runs/${runId}/teacher-grid`
+      : `/schedule/runs/${runId}/grid?groupId=${groupId}`
+    api(url)
       .then((g) => { if (alive) setGrid(g) })
       .catch((e) => { if (alive) { setErr(e.message); setGrid(null) } })
     return () => { alive = false }
-  }, [runId, groupId])
+  }, [runId, groupId, isTeacher])
 
   // Jadval yaratish: generate → done bo'lguncha poll → natijani ko'rsatish.
   const generate = async () => {
@@ -86,9 +95,11 @@ export default function Schedule() {
         </div>
         <div className="flex items-center gap-2">
           <button className="btn-ghost" onClick={() => loadMeta(runId)} title="Yangilash"><RefreshCw size={15} /></button>
-          <button className="btn-primary" disabled={!!busy} onClick={() => setGenOpen(true)}>
-            {busy ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />} Jadval yaratish
-          </button>
+          {canGenerate && (
+            <button className="btn-primary" disabled={!!busy} onClick={() => setGenOpen(true)}>
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />} Jadval yaratish
+            </button>
+          )}
         </div>
       </div>
 
@@ -109,12 +120,16 @@ export default function Schedule() {
             ))}
           </select>
         </Field>
-        <Field label="Guruh">
-          <select className="input min-w-[160px]" value={groupId ?? ''} onChange={(e) => setGroupId(Number(e.target.value))}>
-            {groups.length === 0 && <option value="">— guruh yo'q —</option>}
-            {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-          </select>
-        </Field>
+        {isTeacher ? (
+          <div className="pb-2"><Badge color="blue">Mening jadvalim</Badge></div>
+        ) : (
+          <Field label="Guruh">
+            <select className="input min-w-[160px]" value={groupId ?? ''} onChange={(e) => setGroupId(Number(e.target.value))}>
+              {groups.length === 0 && <option value="">— guruh yo'q —</option>}
+              {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+          </Field>
+        )}
         {run && (
           <div className="flex items-center gap-2 pb-2">
             {statusBadge(run.status)}
@@ -132,7 +147,7 @@ export default function Schedule() {
         <div className="card flex flex-col items-center gap-3 p-12 text-center">
           <CalendarDays size={40} className="text-slate-300 dark:text-slate-600" />
           <div className="text-slate-500 dark:text-slate-400">Hali jadval yaratilmagan.</div>
-          <button className="btn-primary" onClick={() => setGenOpen(true)}><Zap size={16} /> Birinchi jadvalni yaratish</button>
+          {canGenerate && <button className="btn-primary" onClick={() => setGenOpen(true)}><Zap size={16} /> Birinchi jadvalni yaratish</button>}
         </div>
       ) : !grid ? (
         <div className="card p-10 text-center text-slate-400">Guruh tanlang yoki jadval yuklanmoqda…</div>
@@ -156,7 +171,7 @@ export default function Schedule() {
                       {c && (
                         <div className={`rounded-md border px-2 py-1 text-xs ${DAY_COLORS[di % DAY_COLORS.length]}`}>
                           <div className="font-semibold">{c.subject || 'Fan'}</div>
-                          <div className="opacity-80">{c.teacher || ''}</div>
+                          <div className="opacity-80">{c.teacher || c.group || ''}</div>
                           {c.room && <div className="opacity-70">{c.room}</div>}
                         </div>
                       )}

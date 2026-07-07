@@ -6,6 +6,7 @@ import { prisma, audit } from '../db.js'
 import { scheduleRouter } from './schedule.js'
 import { requestsRouter } from './requests.js'
 import { requireRole } from '../auth/middleware.js'
+import { requireWrite, requireRead, scopeWhere as accessScopeWhere, scopeAssert as accessScopeAssert } from '../auth/access.js'
 import { hashPassword } from '../auth/password.js'
 
 const stripPassword = (u) => { const { passwordHash, ...rest } = u; return rest }
@@ -30,8 +31,8 @@ const resources = [
   { path: 'rooms', model: 'room', label: 'Xona', schema: schemas.room, include: { building: true } },
   { path: 'room-permissions', model: 'roomPermission', label: 'Xona ruxsati', schema: schemas.roomPermission, include: { room: true, teacher: true, group: true, specialty: true } },
   { path: 'workloads', model: 'workload', label: 'Yuklama', schema: schemas.workload, include: { group: true, teacher: true, subject: true } },
-  // Foydalanuvchilar: faqat Super Admin o'zgartiradi, parol hech qachon qaytarilmaydi
-  { path: 'users', model: 'user', label: 'Foydalanuvchi', schema: schemas.user, mutationGuard: [requireRole('Super Admin')], sanitize: stripPassword, transform: userTransform },
+  // Foydalanuvchilar: faqat Super Admin ko'radi va o'zgartiradi, parol hech qachon qaytarilmaydi
+  { path: 'users', model: 'user', label: 'Foydalanuvchi', schema: schemas.user, sanitize: stripPassword, transform: userTransform },
 ]
 
 export function buildRoutes() {
@@ -43,7 +44,12 @@ export function buildRoutes() {
       crudRouter({
         model: r.model, label: r.label,
         createSchema: r.schema, updateSchema: r.schema.partial(),
-        include: r.include, mutationGuard: r.mutationGuard, sanitize: r.sanitize, transform: r.transform,
+        include: r.include, sanitize: r.sanitize, transform: r.transform,
+        // Rol-huquq: o'qish/yozish ruxsati + har rol faqat o'z birligi ma'lumotini ko'radi
+        readGuard: [requireRead(r.path)],
+        writeGuard: [requireWrite(r.path)],
+        scopeWhere: (user) => accessScopeWhere(r.path, user),
+        scopeAssert: (user, data, existing) => accessScopeAssert(r.path, user, data, existing),
       }),
     )
   }

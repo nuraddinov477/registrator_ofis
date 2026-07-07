@@ -16,6 +16,8 @@ export function errorHandler(err, req, res, next) {
     if (err.code === 'P2002') return res.status(409).json({ error: 'Bunday qiymat allaqachon mavjud', fields: err.meta?.target })
     if (err.code === 'P2003') return res.status(409).json({ error: "Bog'liq yozuv mavjud (foreign key cheklovi)" })
   }
+  // Aniq HTTP status bilan tashlangan xatolar (masalan AccessError → 403)
+  if (typeof err?.status === 'number') return res.status(err.status).json({ error: err.message })
   console.error('[ERROR]', err)
   res.status(500).json({ error: 'Ichki server xatosi' })
 }

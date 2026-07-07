@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { BookOpen, FileText, UserCog, ShieldCheck, Plus, Pencil, Trash2 } from 'lucide-react'
 import { db, useCollection } from '../data/store'
 import { api, auth } from '../api/client'
+import { canWrite } from '../lib/access'
 import { PageHeader, SearchBar, Table, Modal, Field, Badge } from '../components/ui'
 
 /* ---------- O'quv yuklamasi ---------- */
@@ -25,7 +26,7 @@ export function Loads() {
   return (
     <div>
       <PageHeader title="O'quv yuklamasi" count={loads.length}
-        action={<button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> Qo'shish</button>} />
+        action={canWrite('loads') ? <button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> Qo'shish</button> : null} />
       <SearchBar value={q} onChange={setQ} />
       <div className="mb-4 inline-flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800/60">
         {[['list', "Yuklama ro'yxati"], ['teacher', "O'qituvchi yuklamasi"]].map(([id, l]) => (
@@ -240,11 +241,14 @@ export function Requests() {
 /* ---------- Foydalanuvchilar ---------- */
 export function UsersPage() {
   const users = useCollection('users')
+  const faculties = useCollection('faculties')
+  const departments = useCollection('departments')
+  const teachers = useCollection('teachers')
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({})
-  const openAdd = () => { setEditing(null); setForm({ login: '', fullName: '', email: '', role: 'Fakultet operatori', active: true, password: '' }); setOpen(true) }
+  const openAdd = () => { setEditing(null); setForm({ login: '', fullName: '', email: '', role: 'Fakultet operatori', active: true, password: '', facultyId: '', departmentId: '', teacherId: '' }); setOpen(true) }
   const openEdit = (u) => { setEditing(u); setForm({ ...u, password: '' }); setOpen(true) }
   const save = (e) => { e.preventDefault(); editing ? db.update('users', editing.id, form) : db.add('users', form); setOpen(false) }
 
@@ -273,7 +277,17 @@ export function UsersPage() {
           <Field label="Login"><input className="input" required value={form.login || ''} onChange={(e) => setForm({ ...form, login: e.target.value })} /></Field>
           <Field label="F.I"><input className="input" required value={form.fullName || ''} onChange={(e) => setForm({ ...form, fullName: e.target.value })} /></Field>
           <Field label="Email"><input className="input" value={form.email || ''} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-          <Field label="Rol"><select className="input" value={form.role || ''} onChange={(e) => setForm({ ...form, role: e.target.value })}>{['Super Admin', 'Fakultet operatori', 'Kafedra mudiri', 'Oʻqituvchi'].map((r) => <option key={r}>{r}</option>)}</select></Field>
+          <Field label="Rol"><select className="input" value={form.role || ''} onChange={(e) => setForm({ ...form, role: e.target.value, facultyId: '', departmentId: '', teacherId: '' })}>{['Super Admin', 'Fakultet operatori', 'Kafedra mudiri', 'Oʻqituvchi'].map((r) => <option key={r}>{r}</option>)}</select></Field>
+          {/* Rol qamrovi: userni o'z birligiga biriktirish (scoping shu asosda ishlaydi) */}
+          {form.role === 'Fakultet operatori' && (
+            <Field label="Fakultet (biriktirish)"><select className="input" value={form.facultyId || ''} onChange={(e) => setForm({ ...form, facultyId: e.target.value })}><option value="">— tanlang —</option>{faculties.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></Field>
+          )}
+          {form.role === 'Kafedra mudiri' && (
+            <Field label="Kafedra (biriktirish)"><select className="input" value={form.departmentId || ''} onChange={(e) => setForm({ ...form, departmentId: e.target.value })}><option value="">— tanlang —</option>{departments.map((d) => <option key={d.id} value={d.id}>{d.name}{d.faculty ? ` — ${d.faculty.name}` : ''}</option>)}</select></Field>
+          )}
+          {form.role === 'Oʻqituvchi' && (
+            <Field label="O'qituvchi yozuvi (biriktirish)"><select className="input" value={form.teacherId || ''} onChange={(e) => setForm({ ...form, teacherId: e.target.value })}><option value="">— tanlang —</option>{teachers.map((t) => <option key={t.id} value={t.id}>{t.fullName}{t.department ? ` — ${t.department.name}` : ''}</option>)}</select></Field>
+          )}
           <Field label={editing ? 'Yangi parol' : 'Parol'}>
             <input className="input" type="password" required={!editing} value={form.password || ''}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
