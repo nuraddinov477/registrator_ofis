@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { asyncHandler } from '../lib/asyncHandler.js'
 import { prisma, audit } from '../db.js'
 import { requireRole } from '../auth/middleware.js'
+import { restrictionBlocks } from '../auth/access.js'
 import { startGenerateJob } from '../engine/jobRunner.js'
 import { DAY_NAMES, DAYS, PAIRS } from '../engine/timeslots.js'
 
@@ -11,6 +12,7 @@ export const scheduleRouter = Router()
 // Faqat Super Admin va Fakultet operatori jadval yaratadi.
 // Holatni /runs/:id orqali kuzating (status: running → done/failed).
 scheduleRouter.post('/generate', requireRole('Super Admin', 'Fakultet operatori'), asyncHandler(async (req, res) => {
+  if (restrictionBlocks(req.user, 'schedule', 'write')) return res.status(403).json({ error: 'Ruxsat yetarli emas (cheklangan)' })
   const semester = Number(req.body?.semester) || 1
   const maxMs = Math.min(120_000, Number(req.body?.maxMs) || 5000)
 

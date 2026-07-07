@@ -18,10 +18,13 @@ const WRITE = {
   teachers: [MUDIR],
   subjects: [OPERATOR, MUDIR], rooms: [OPERATOR], 'room-permissions': [OPERATOR],
   workloads: [OPERATOR, MUDIR],
-  users: [],
+  users: [OPERATOR, MUDIR], // delegatsiya: o'z doirasida akkaunt yaratadi
 }
 // store'dagi kolleksiya nomi ↔ backend resurs nomi
 const ALIAS = { loads: 'workloads' }
+// resurs/kolleksiya → "bo'lim" kaliti (cheklovlar shu kalitlar bilan)
+const SECTION = { loads: 'loads', workloads: 'loads', buildings: 'rooms', 'room-permissions': 'rooms' }
+export const sectionOf = (key) => SECTION[key] ?? key
 
 // Menyu/route ko'rinishi: har yo'l qaysi rollarga ko'rinadi
 const ROUTE_ROLES = {
@@ -36,27 +39,76 @@ const ROUTE_ROLES = {
   '/groups': [SUPER, OPERATOR],
   '/rooms': [SUPER, OPERATOR],
   '/schedule': [SUPER, OPERATOR, MUDIR, TEACHER],
-  '/users': [SUPER],
+  '/users': [SUPER, OPERATOR, MUDIR], // delegatsiya
   '/audit': [SUPER],
+}
+
+// Cheklov UI uchun bo'lim nomlari
+export const SECTION_LABELS = {
+  loads: "O'quv yuklamasi", requests: 'Talabnomalar', specialties: 'Mutaxassisliklar',
+  teachers: "O'qituvchilar", subjects: 'Fanlar', groups: 'Guruhlar', rooms: 'Bino va xonalar',
+  schedule: 'Dars jadvali', users: 'Foydalanuvchilar', faculties: 'Fakultetlar', departments: 'Kafedralar', audit: 'Audit',
 }
 
 export const currentUser = () => auth.user()
 export const roleOf = (user) => (user ?? auth.user())?.role
 export const isSuperAdmin = (user) => roleOf(user) === SUPER
 
-// Bu rol resursni yoza oladimi?
+// Super Admin qo'ygan shaxsiy cheklovlar (Super Admin cheklanmaydi)
+export function restrictionsOf(user) {
+  const u = user ?? auth.user()
+  const empty = { readOnly: false, denyWrite: [], denyRead: [] }
+  if (isSuperAdmin(u) || !u?.restrictions) return empty
+  try {
+    const r = typeof u.restrictions === 'string' ? JSON.parse(u.restrictions) : u.restrictions
+    return { readOnly: !!r?.readOnly, denyWrite: r?.denyWrite || [], denyRead: r?.denyRead || [] }
+  } catch { return empty }
+}
+
+// Bu rol resursni yoza oladimi? (rol ruxsati + shaxsiy cheklov)
 export function canWrite(resource, user) {
   const u = user ?? auth.user()
   if (isSuperAdmin(u)) return true
   const res = ALIAS[resource] ?? resource
-  return (WRITE[res] ?? []).includes(u?.role)
+  if (!(WRITE[res] ?? []).includes(u?.role)) return false
+  const r = restrictionsOf(u)
+  return !r.readOnly && !r.denyWrite.includes(sectionOf(resource))
 }
 
-// Bu yo'l shu rolga ko'rinadimi?
+// Bu yo'l shu rolga ko'rinadimi? (rol + shaxsiy "yashirish" cheklovi)
 export function canSeeRoute(path, user) {
   const u = user ?? auth.user()
   if (isSuperAdmin(u)) return true
-  return (ROUTE_ROLES[path] ?? [SUPER]).includes(u?.role)
+  if (!(ROUTE_ROLES[path] ?? [SUPER]).includes(u?.role)) return false
+  const section = path.replace('/', '')
+  if (!section) return true // Dashboard doim ko'rinadi
+  return !restrictionsOf(u).denyRead.includes(section)
+}
+
+// Yaratuvchi qaysi rollarni bera oladi (delegatsiya ierarxiyasi)
+export function assignableRoles(user) {
+  const u = user ?? auth.user()
+  if (isSuperAdmin(u)) return [SUPER, OPERATOR, MUDIR, TEACHER]
+  if (u?.role === OPERATOR) return [MUDIR, TEACHER]
+  if (u?.role === MUDIR) return [TEACHER]
+  return []
+}
+
+// Shu rol yoza oladigan bo'limlar (cheklov "yozishni taqiqlash" checkboxlari uchun)
+export function writableSections(role) {
+  const out = []
+  for (const [res, roles] of Object.entries(WRITE)) if (roles.includes(role)) out.push(sectionOf(res))
+  if (role === OPERATOR || role === MUDIR) out.push('requests')
+  if (role === OPERATOR) out.push('schedule')
+  return [...new Set(out)]
+}
+
+// Shu rol ko'ra oladigan bo'limlar (cheklov "yashirish" checkboxlari uchun) — Dashboard'dan tashqari
+export function visibleSections(role) {
+  return Object.keys(ROUTE_ROLES)
+    .filter((p) => (ROUTE_ROLES[p] || []).includes(role))
+    .map((p) => p.replace('/', ''))
+    .filter((s) => s)
 }
 
 // Scoped rol (operator/mudir) birlikka bog'lanmaganmi? → banner ko'rsatiladi

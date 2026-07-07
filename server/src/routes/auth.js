@@ -23,6 +23,7 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
     user: {
       id: user.id, login: user.login, fullName: user.fullName, role: user.role,
       facultyId: user.facultyId, departmentId: user.departmentId, teacherId: user.teacherId,
+      restrictions: user.restrictions,
     },
   })
 }))

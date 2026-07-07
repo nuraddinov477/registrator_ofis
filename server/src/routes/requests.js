@@ -2,13 +2,15 @@ import { Router } from 'express'
 import { prisma, audit } from '../db.js'
 import { asyncHandler } from '../lib/asyncHandler.js'
 import { requireRole } from '../auth/middleware.js'
-import { AccessError, isSuperAdmin } from '../auth/access.js'
+import { AccessError, isSuperAdmin, restrictionBlocks } from '../auth/access.js'
 
 // Ariza yarata/javob bera oladigan rollar (o'qituvchi arizalar bilan ishlamaydi)
 const CAN_ACT = ['Super Admin', 'Fakultet operatori', 'Kafedra mudiri']
 const requireActor = (req, res, next) => {
   if (!req.user) return res.status(401).json({ error: 'Avtorizatsiya talab qilinadi' })
   if (!CAN_ACT.includes(req.user.role)) return res.status(403).json({ error: 'Ruxsat yetarli emas' })
+  // Super Admin qo'ygan shaxsiy cheklov (readOnly yoki "requests" taqiqi)
+  if (restrictionBlocks(req.user, 'requests', 'write')) return res.status(403).json({ error: 'Ruxsat yetarli emas (cheklangan)' })
   next()
 }
 

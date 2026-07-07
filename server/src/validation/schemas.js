@@ -41,8 +41,13 @@ export const schemas = {
 
   // password: yaratishda/parolni o'zgartirishda beriladi; bo'sh bo'lsa passwordHash tegilmaydi
   // facultyId/departmentId/teacherId: rol qamrovi — userni o'z birligiga biriktiradi
+  // restrictions: Super Admin qo'yadigan shaxsiy cheklovlar — obyekt kelsa JSON-string'ga o'giriladi
   user: z.object({
     login: name, fullName: name, email: optStr, role: optStr, active: bool, password: optStr,
     facultyId: optInt, departmentId: optInt, teacherId: optInt,
+    restrictions: z.preprocess(
+      (v) => (v == null || v === '' ? null : (typeof v === 'string' ? v : JSON.stringify(v))),
+      z.string().nullable(),
+    ),
   }),
 }

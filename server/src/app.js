@@ -9,6 +9,7 @@ import { prisma } from './db.js'
 import { buildRoutes } from './routes/index.js'
 import { authRouter } from './routes/auth.js'
 import { requireAuth } from './auth/middleware.js'
+import { loadPerms } from './auth/loadPerms.js'
 import { notFound, errorHandler } from './middleware/error.js'
 
 export function createApp() {
@@ -38,8 +39,8 @@ export function createApp() {
   const authLimiter = rateLimit({ windowMs: config.rateLimit.windowMs, max: config.rateLimit.authMax, standardHeaders: true, legacyHeaders: false })
   app.use('/api/auth', authLimiter, authRouter)
 
-  // Qolgan barcha /api — autentifikatsiya talab qiladi
-  app.use('/api', requireAuth, buildRoutes())
+  // Qolgan barcha /api — autentifikatsiya + har so'rovda yangilangan huquq/cheklov
+  app.use('/api', requireAuth, loadPerms, buildRoutes())
 
   app.use(notFound)
   app.use(errorHandler)

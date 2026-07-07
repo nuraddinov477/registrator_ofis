@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { BookOpen, FileText, UserCog, ShieldCheck, Plus, Pencil, Trash2 } from 'lucide-react'
 import { db, useCollection } from '../data/store'
 import { api, auth } from '../api/client'
-import { canWrite } from '../lib/access'
+import { canWrite, assignableRoles, writableSections, visibleSections, SECTION_LABELS } from '../lib/access'
 import { PageHeader, SearchBar, Table, Modal, Field, Badge } from '../components/ui'
 
 /* ---------- O'quv yuklamasi ---------- */
@@ -238,7 +238,14 @@ export function Requests() {
   )
 }
 
-/* ---------- Foydalanuvchilar ---------- */
+/* ---------- Foydalanuvchilar (rol delegatsiyasi + per-user cheklovlar) ---------- */
+const emptyRestr = () => ({ readOnly: false, denyWrite: [], denyRead: [] })
+const parseRestr = (raw) => {
+  if (!raw) return emptyRestr()
+  try { const r = typeof raw === 'string' ? JSON.parse(raw) : raw; return { readOnly: !!r.readOnly, denyWrite: r.denyWrite || [], denyRead: r.denyRead || [] } }
+  catch { return emptyRestr() }
+}
+
 export function UsersPage() {
   const users = useCollection('users')
   const faculties = useCollection('faculties')
@@ -248,23 +255,51 @@ export function UsersPage() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({})
-  const openAdd = () => { setEditing(null); setForm({ login: '', fullName: '', email: '', role: 'Fakultet operatori', active: true, password: '', facultyId: '', departmentId: '', teacherId: '' }); setOpen(true) }
-  const openEdit = (u) => { setEditing(u); setForm({ ...u, password: '' }); setOpen(true) }
+
+  const me = auth.user()
+  const isSuper = me?.role === 'Super Admin'
+  const assignable = assignableRoles(me)
+  // Birlik tanlovlari — yaratuvchi doirasiga cheklangan
+  const deptOptions = isSuper ? departments : departments.filter((d) => d.facultyId === me?.facultyId)
+  const teacherOptions = isSuper ? teachers
+    : me?.role === 'Kafedra mudiri' ? teachers.filter((t) => t.departmentId === me?.departmentId)
+      : teachers.filter((t) => t.department?.facultyId === me?.facultyId)
+
+  const openAdd = () => { setEditing(null); setForm({ login: '', fullName: '', email: '', role: assignable[0] || 'Oʻqituvchi', active: true, password: '', facultyId: '', departmentId: '', teacherId: '', restrictions: emptyRestr() }); setOpen(true) }
+  const openEdit = (u) => { setEditing(u); setForm({ ...u, password: '', restrictions: parseRestr(u.restrictions) }); setOpen(true) }
   const save = (e) => { e.preventDefault(); editing ? db.update('users', editing.id, form) : db.add('users', form); setOpen(false) }
+
+  // Cheklov yordamchilari
+  const setR = (patch) => setForm((f) => ({ ...f, restrictions: { ...emptyRestr(), ...(f.restrictions || {}), ...patch } }))
+  const toggleR = (key, val) => setForm((f) => {
+    const cur = f.restrictions || emptyRestr()
+    const set = new Set(cur[key] || [])
+    set.has(val) ? set.delete(val) : set.add(val)
+    return { ...f, restrictions: { ...cur, [key]: [...set] } }
+  })
+  const restr = form.restrictions || emptyRestr()
+  const hasRestr = (u) => { const r = parseRestr(u.restrictions); return r.readOnly || r.denyWrite.length || r.denyRead.length }
+
+  // Ro'yxat: Super Admin hammani, boshqalar faqat o'zi boshqara oladigan rollarni ko'radi
+  const manageable = isSuper ? users : users.filter((u) => assignable.includes(u.role))
+  const rows = manageable.filter((u) => Object.values(u).join(' ').toLowerCase().includes(q.toLowerCase()))
 
   return (
     <div>
-      <PageHeader title="Foydalanuvchilar" count={users.length}
-        action={<button className="btn-primary" onClick={openAdd}><Plus size={16} /> Qo'shish</button>} />
+      <PageHeader title="Foydalanuvchilar" count={manageable.length}
+        action={canWrite('users') ? <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Qo'shish</button> : null} />
       <SearchBar value={q} onChange={setQ} />
       <Table columns={['Login', 'F.I', 'Email', 'Rol', 'Holat', 'Amallar']}
-        rows={users.filter((u) => Object.values(u).join(' ').toLowerCase().includes(q.toLowerCase()))}
+        rows={rows}
         renderRow={(u) => (
           <tr key={u.id} className="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
             <td className="px-4 py-3"><Badge color="gray">{u.login}</Badge></td>
             <td className="px-4 py-3 font-medium">{u.fullName}</td>
             <td className="px-4 py-3">{u.email || '—'}</td>
-            <td className="px-4 py-3">{u.role === 'Super Admin' ? <Badge>Super Admin</Badge> : u.role}</td>
+            <td className="px-4 py-3">
+              {u.role === 'Super Admin' ? <Badge>Super Admin</Badge> : u.role}
+              {hasRestr(u) ? <Badge color="amber">cheklangan</Badge> : null}
+            </td>
             <td className="px-4 py-3"><Badge color={u.active ? 'green' : 'gray'}>{u.active ? 'Faol' : 'Nofaol'}</Badge></td>
             <td className="px-4 py-3"><div className="flex gap-1">
               <button onClick={() => openEdit(u)} className="rounded-md p-1.5 text-slate-400 hover:text-brand"><Pencil size={15} /></button>
@@ -277,16 +312,16 @@ export function UsersPage() {
           <Field label="Login"><input className="input" required value={form.login || ''} onChange={(e) => setForm({ ...form, login: e.target.value })} /></Field>
           <Field label="F.I"><input className="input" required value={form.fullName || ''} onChange={(e) => setForm({ ...form, fullName: e.target.value })} /></Field>
           <Field label="Email"><input className="input" value={form.email || ''} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-          <Field label="Rol"><select className="input" value={form.role || ''} onChange={(e) => setForm({ ...form, role: e.target.value, facultyId: '', departmentId: '', teacherId: '' })}>{['Super Admin', 'Fakultet operatori', 'Kafedra mudiri', 'Oʻqituvchi'].map((r) => <option key={r}>{r}</option>)}</select></Field>
+          <Field label="Rol"><select className="input" value={form.role || ''} onChange={(e) => setForm({ ...form, role: e.target.value, facultyId: '', departmentId: '', teacherId: '' })}>{assignable.map((r) => <option key={r}>{r}</option>)}</select></Field>
           {/* Rol qamrovi: userni o'z birligiga biriktirish (scoping shu asosda ishlaydi) */}
-          {form.role === 'Fakultet operatori' && (
+          {form.role === 'Fakultet operatori' && isSuper && (
             <Field label="Fakultet (biriktirish)"><select className="input" value={form.facultyId || ''} onChange={(e) => setForm({ ...form, facultyId: e.target.value })}><option value="">— tanlang —</option>{faculties.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></Field>
           )}
           {form.role === 'Kafedra mudiri' && (
-            <Field label="Kafedra (biriktirish)"><select className="input" value={form.departmentId || ''} onChange={(e) => setForm({ ...form, departmentId: e.target.value })}><option value="">— tanlang —</option>{departments.map((d) => <option key={d.id} value={d.id}>{d.name}{d.faculty ? ` — ${d.faculty.name}` : ''}</option>)}</select></Field>
+            <Field label="Kafedra (biriktirish)"><select className="input" value={form.departmentId || ''} onChange={(e) => setForm({ ...form, departmentId: e.target.value })}><option value="">— tanlang —</option>{deptOptions.map((d) => <option key={d.id} value={d.id}>{d.name}{d.faculty ? ` — ${d.faculty.name}` : ''}</option>)}</select></Field>
           )}
           {form.role === 'Oʻqituvchi' && (
-            <Field label="O'qituvchi yozuvi (biriktirish)"><select className="input" value={form.teacherId || ''} onChange={(e) => setForm({ ...form, teacherId: e.target.value })}><option value="">— tanlang —</option>{teachers.map((t) => <option key={t.id} value={t.id}>{t.fullName}{t.department ? ` — ${t.department.name}` : ''}</option>)}</select></Field>
+            <Field label="O'qituvchi yozuvi (biriktirish)"><select className="input" value={form.teacherId || ''} onChange={(e) => setForm({ ...form, teacherId: e.target.value })}><option value="">— tanlang —</option>{teacherOptions.map((t) => <option key={t.id} value={t.id}>{t.fullName}{t.department ? ` — ${t.department.name}` : ''}</option>)}</select></Field>
           )}
           <Field label={editing ? 'Yangi parol' : 'Parol'}>
             <input className="input" type="password" required={!editing} value={form.password || ''}
@@ -294,6 +329,42 @@ export function UsersPage() {
               placeholder={editing ? "bo'sh qoldirsangiz o'zgarmaydi" : 'kamida 4 belgi'} />
           </Field>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> Faol</label>
+
+          {/* Shaxsiy cheklovlar — faqat Super Admin, Super Admin bo'lmagan userlar uchun */}
+          {isSuper && form.role && form.role !== 'Super Admin' && (
+            <div className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+              <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">Cheklovlar (ixtiyoriy)</div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={!!restr.readOnly} onChange={(e) => setR({ readOnly: e.target.checked })} />
+                Faqat ko'rish — hech narsa o'zgartira olmaydi
+              </label>
+              {!restr.readOnly && writableSections(form.role).length > 0 && (
+                <div>
+                  <div className="mb-1 text-xs text-slate-500">Yozishni taqiqlash:</div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {writableSections(form.role).map((s) => (
+                      <label key={s} className="flex items-center gap-1 text-xs">
+                        <input type="checkbox" checked={restr.denyWrite.includes(s)} onChange={() => toggleR('denyWrite', s)} />
+                        {SECTION_LABELS[s] || s}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div>
+                <div className="mb-1 text-xs text-slate-500">Bo'limlarni butunlay yashirish:</div>
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  {visibleSections(form.role).map((s) => (
+                    <label key={s} className="flex items-center gap-1 text-xs">
+                      <input type="checkbox" checked={restr.denyRead.includes(s)} onChange={() => toggleR('denyRead', s)} />
+                      {SECTION_LABELS[s] || s}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-2"><button type="button" className="btn-ghost" onClick={() => setOpen(false)}>Bekor</button><button type="submit" className="btn-primary">Saqlash</button></div>
         </form>
       </Modal>
