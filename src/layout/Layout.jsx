@@ -8,21 +8,45 @@ import {
 import { auth } from '../api/client'
 import { canSeeRoute, unassignedScope, roleOf } from '../lib/access'
 
-const nav = [
-  { to: '/', label: 'Dashboard', icon: LayoutGrid, end: true },
-  { to: '/loads', label: "O'quv yuklamasi", icon: BookOpen },
-  { to: '/requests', label: 'Talabnomalar', icon: FileText },
-  { to: '/faculties', label: 'Fakultetlar', icon: Building2 },
-  { to: '/departments', label: 'Kafedralar', icon: Landmark },
-  { to: '/specialties', label: 'Mutaxassisliklar', icon: GraduationCap },
-  { to: '/teachers', label: "O'qituvchilar", icon: Users },
-  { to: '/subjects', label: 'Fanlar bazasi', icon: Library },
-  { to: '/groups', label: 'Akademik guruhlar', icon: Network },
-  { to: '/rooms', label: 'Bino va xonalar', icon: Home },
-  { to: '/schedule', label: 'Dars jadvali', icon: CalendarDays },
-  { to: '/users', label: 'Foydalanuvchilar', icon: UserCog },
-  { to: '/audit', label: 'Audit logi', icon: ShieldCheck },
+// Menyu 4 blokka guruhlangan — har rol faqat o'ziga ko'rinadigan bo'limlarni oladi,
+// bo'sh qolgan blok sarlavhasi bilan birga yashirinadi
+const navGroups = [
+  { title: null, items: [{ to: '/', label: 'Dashboard', icon: LayoutGrid, end: true }] },
+  {
+    title: 'Tuzilma',
+    items: [
+      { to: '/faculties', label: 'Fakultetlar', icon: Building2 },
+      { to: '/departments', label: 'Kafedralar', icon: Landmark },
+      { to: '/specialties', label: 'Mutaxassisliklar', icon: GraduationCap },
+    ],
+  },
+  {
+    title: 'Resurslar',
+    items: [
+      { to: '/teachers', label: "O'qituvchilar", icon: Users },
+      { to: '/subjects', label: 'Fanlar bazasi', icon: Library },
+      { to: '/groups', label: 'Akademik guruhlar', icon: Network },
+      { to: '/rooms', label: 'Bino va xonalar', icon: Home },
+    ],
+  },
+  {
+    title: 'Jarayon',
+    items: [
+      { to: '/loads', label: "O'quv yuklamasi", icon: BookOpen },
+      { to: '/requests', label: 'Talabnomalar', icon: FileText },
+      { to: '/schedule', label: 'Dars jadvali', icon: CalendarDays },
+    ],
+  },
+  {
+    title: 'Boshqaruv',
+    items: [
+      { to: '/users', label: 'Foydalanuvchilar', icon: UserCog },
+      { to: '/audit', label: 'Audit logi', icon: ShieldCheck },
+    ],
+  },
 ]
+
+const nav = navGroups.flatMap((g) => g.items)
 
 function useTheme() {
   const [dark, setDark] = useState(() => !document.documentElement.classList.contains('light'))
@@ -37,8 +61,10 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [dark, toggleTheme] = useTheme()
   const location = useLocation()
-  // Har rol faqat o'ziga ruxsat etilgan bo'limlarni ko'radi
-  const visibleNav = nav.filter((n) => canSeeRoute(n.to))
+  // Har rol faqat o'ziga ruxsat etilgan bo'limlarni ko'radi; bo'sh bloklar yashirinadi
+  const visibleGroups = navGroups
+    .map((g) => ({ ...g, items: g.items.filter((n) => canSeeRoute(n.to)) }))
+    .filter((g) => g.items.length > 0)
   const unassigned = unassignedScope()
   const role = roleOf()
   const current = nav.find((n) => (n.end ? location.pathname === n.to : location.pathname.startsWith(n.to) && n.to !== '/'))?.label || 'Dashboard'
@@ -51,27 +77,35 @@ export default function Layout() {
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand text-white">
             <GraduationCap size={18} />
           </div>
-          {!collapsed && <span className="text-lg font-bold">UniSchedule</span>}
+          {!collapsed && <span className="text-lg font-bold">SmartJadval</span>}
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {visibleNav.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              title={item.label}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                  isActive
-                    ? 'bg-brand text-white shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/70'
-                }`
-              }
-            >
-              <item.icon size={18} className="shrink-0" />
-              {!collapsed && <span className="truncate">{item.label}</span>}
-            </NavLink>
+        <nav className="flex-1 space-y-3 overflow-y-auto p-3">
+          {visibleGroups.map((group) => (
+            <div key={group.title || 'asosiy'} className="space-y-1">
+              {group.title && (collapsed
+                ? <div className="mx-2 border-t border-slate-200 dark:border-slate-800" />
+                : <div className="px-3 pt-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">{group.title}</div>
+              )}
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  title={item.label}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                      isActive
+                        ? 'bg-brand text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/70'
+                    }`
+                  }
+                >
+                  <item.icon size={18} className="shrink-0" />
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
 

@@ -1,9 +1,9 @@
 {
-  "name": "unischedule-server",
+  "name": "smartjadval-server",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "UniSchedule backend — REST API + jadval optimallashtirish engine poydevori",
+  "description": "SmartJadval backend — REST API + jadval optimallashtirish engine poydevori",
   "scripts": {
     "dev": "node --watch --env-file=.env src/index.js",
     "start": "node --env-file=.env src/index.js",

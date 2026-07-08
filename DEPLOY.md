@@ -1,4 +1,4 @@
-# UniSchedule — Deploy qo'llanmasi
+# SmartJadval — Deploy qo'llanmasi
 
 To'liq stek: **React (Vite)** frontend + **Express/Prisma** backend + **gibrid jadval engine**.
 

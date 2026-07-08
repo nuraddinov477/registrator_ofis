@@ -1,4 +1,4 @@
-# UniSchedule
+# SmartJadval
 
 Universitet boshqaruv tizimi (dars jadvali, fakultetlar, kafedralar, oʻqituvchilar va h.k.) — rasmlardagi saytga oʻxshash klon.
 

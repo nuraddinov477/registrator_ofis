@@ -27,7 +27,7 @@ export default function Login() {
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand text-white">
             <GraduationCap size={26} />
           </div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">UniSchedule</h1>
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white">SmartJadval</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">Tizimga kirish</p>
         </div>
 
@@ -46,9 +46,6 @@ export default function Login() {
           <button type="submit" disabled={busy} className="btn-primary w-full justify-center disabled:opacity-60">
             <LogIn size={16} /> {busy ? 'Kirilmoqda...' : 'Kirish'}
           </button>
-          <p className="text-center text-xs text-slate-400">
-            Demo: <b>admin / admin123</b> yoki <b>operator / operator123</b>
-          </p>
         </form>
       </div>
     </div>
