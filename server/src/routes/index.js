@@ -5,6 +5,7 @@ import { schemas } from '../validation/schemas.js'
 import { prisma, audit } from '../db.js'
 import { scheduleRouter } from './schedule.js'
 import { requestsRouter } from './requests.js'
+import { handoverRouter } from './handover.js'
 import { requireRole } from '../auth/middleware.js'
 import { requireWrite, requireRead, scopeWhere as accessScopeWhere, scopeAssert as accessScopeAssert } from '../auth/access.js'
 import { hashPassword } from '../auth/password.js'
@@ -37,6 +38,10 @@ const resources = [
 
 export function buildRoutes() {
   const router = Router()
+
+  // Almashtirish ustasi (dekret/ta'til) — /teachers/:id/handover-plan va /handover.
+  // CRUD marshrutlaridan oldin: yo'llar 2 segmentli, to'qnashuv yo'q.
+  router.use('/teachers', handoverRouter())
 
   for (const r of resources) {
     router.use(

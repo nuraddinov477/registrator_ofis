@@ -66,6 +66,9 @@ model Teacher {
   position        String? // Assistent / Katta o'qituvchi / Dotsent / Professor
   degree          String? // PhD / DSc
   email           String?
+  // Ish holati: "faol" | "dekret" | "ta'til". Faol bo'lmagan o'qituvchiga
+  // almashtirish ustasi yuklamalarini hamkasblarga o'tkazadi.
+  status          String           @default("faol")
   department      Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   departmentId    Int?
   workloads       Workload[]

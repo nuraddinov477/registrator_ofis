@@ -6,7 +6,8 @@ import { PageHeader, SearchBar, Table, Modal, Field } from './ui'
 
 const empty = (fields) => Object.fromEntries(fields.map((f) => [f.name, f.default ?? '']))
 
-export default function CrudPage({ title, subtitle, icon, collection, fields, columns, renderCells }) {
+// extraActions(row) — amallar katagiga qo'shimcha tugmalar (masalan, almashtirish ustasi)
+export default function CrudPage({ title, subtitle, icon, collection, fields, columns, renderCells, extraActions }) {
   const rows = useCollection(collection)
   const writable = canWrite(collection)
   const [q, setQ] = useState('')
@@ -49,6 +50,7 @@ export default function CrudPage({ title, subtitle, icon, collection, fields, co
             {writable && (
               <td className="px-4 py-3">
                 <div className="flex items-center gap-1">
+                  {extraActions?.(row)}
                   <button onClick={() => openEdit(row)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand dark:hover:bg-slate-800">
                     <Pencil size={15} />
                   </button>

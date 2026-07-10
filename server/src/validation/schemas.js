@@ -15,7 +15,10 @@ export const schemas = {
 
   specialty: z.object({ name, code: optStr, form: optStr, years: intDef(4), facultyId: optInt }),
 
-  teacher: z.object({ fullName: name, position: optStr, degree: optStr, email: optStr, departmentId: optInt }),
+  teacher: z.object({
+    fullName: name, position: optStr, degree: optStr, email: optStr, departmentId: optInt,
+    status: z.preprocess((v) => (v === '' || v == null ? 'faol' : v), z.enum(['faol', 'dekret', "ta'til"])),
+  }),
 
   subject: z.object({
     name, code: optStr, type: optStr,

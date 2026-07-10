@@ -8,7 +8,8 @@ export const WEIGHTS = {
   subjectSpread: 4, // bir fan bir kunda takror
   morning: 1, // qiyin fan kechki juftlikda
   groupBalance: 1, // guruh yukini kunlarga teng taqsimlash
-  teacherBalance: 1, // o'qituvchi yukini teng taqsimlash
+  lonePair: 8, // o'qituvchi kuni 1 juftlikdan iborat — 1 soat uchun qatnamasin
+  teacherDay: 2, // o'qituvchining har ish kuni — kamroq kun = ixcham hafta
   roomChange: 1, // guruh uchun har xil xona (barqarorlik)
   MAX_CONSEC: 4,
 }
@@ -70,7 +71,10 @@ export function groupCost(groupEvents, W = WEIGHTS) {
   return cost
 }
 
-// Bitta o'qituvchining yumshoq jarimasi
+// Bitta o'qituvchining yumshoq jarimasi.
+// Maqsad: IXCHAM hafta — kamroq ish kuni, kunda kamida 2 juftlik, derazasiz.
+// (Oldingi teacherBalance darslarni kunlarga tekis yoyar edi — bu ish kunlarini
+// ko'paytirib, "1 soat uchun kelish" muammosini keltirib chiqarardi.)
 export function teacherCost(teacherEvents, W = WEIGHTS) {
   const perDay = Array.from({ length: DAYS }, () => [])
   for (const e of teacherEvents) {
@@ -78,13 +82,13 @@ export function teacherCost(teacherEvents, W = WEIGHTS) {
     perDay[dayOf(e.slot)].push(e)
   }
   let cost = 0
-  const counts = []
   for (const day of perDay) {
+    if (day.length === 0) continue
     const pairs = day.map((e) => pairOf(e.slot))
-    counts.push(day.length)
     cost += gapsInDay(pairs) * W.teacherGap // derazalar
+    cost += W.teacherDay // har faol kun — kunlar soni kamaysin
+    if (day.length === 1) cost += W.lonePair // yolg'iz juftlik kuni — eng yomoni
   }
-  cost += counts.reduce((s, c) => s + c * c, 0) * W.teacherBalance * 0.5
   return cost
 }
 

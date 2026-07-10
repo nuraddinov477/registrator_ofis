@@ -1,5 +1,7 @@
-import { Building2, Landmark, GraduationCap, Users, Library, Network } from 'lucide-react'
+import { useState } from 'react'
+import { Building2, Landmark, GraduationCap, Users, Library, Network, UserRoundX } from 'lucide-react'
 import CrudPage from '../components/CrudPage'
+import HandoverWizard from '../components/HandoverWizard'
 import { db } from '../data/store'
 import { Badge } from '../components/ui'
 
@@ -59,20 +61,38 @@ export function Specialties() {
   )
 }
 
+// Ish holati: faol=yashil, dekret=amber, ta'til=kulrang
+const STATUS_COLORS = { faol: 'green', dekret: 'amber', "ta'til": 'gray' }
+const statusCell = (s) => <td className="px-4 py-3"><Badge color={STATUS_COLORS[s] || 'gray'}>{s || 'faol'}</Badge></td>
+
 export function Teachers() {
+  const [handover, setHandover] = useState(null) // almashtirish ustasi ochilgan o'qituvchi
   return (
-    <CrudPage
-      title="O'qituvchilar" icon={Users} collection="teachers"
-      columns={['F.I.Sh', 'Lavozim', 'Ilmiy daraja', 'Kafedra', 'Email']}
-      fields={[
-        { name: 'fullName', label: 'F.I.Sh', required: true },
-        { name: 'position', label: 'Lavozim', type: 'select', options: () => ['Assistent', 'Katta oʻqituvchi', 'Dotsent', 'Professor'].map((v) => ({ value: v, label: v })) },
-        { name: 'degree', label: 'Ilmiy daraja', type: 'select', options: () => ['—', 'PhD', 'DSc'].map((v) => ({ value: v, label: v })) },
-        { name: 'departmentId', label: 'Kafedra', type: 'select', numeric: true, options: deptOptions },
-        { name: 'email', label: 'Email' },
-      ]}
-      renderCells={(r) => <>{cell(<span className="font-medium">{r.fullName}</span>)}{cell(r.position)}{cell(r.degree || '—')}{cell(deptName(r.departmentId))}{cell(r.email || '—')}</>}
-    />
+    <>
+      <CrudPage
+        title="O'qituvchilar" icon={Users} collection="teachers"
+        columns={['F.I.Sh', 'Lavozim', 'Ilmiy daraja', 'Kafedra', 'Holat', 'Email']}
+        fields={[
+          { name: 'fullName', label: 'F.I.Sh', required: true },
+          { name: 'position', label: 'Lavozim', type: 'select', options: () => ['Assistent', 'Katta oʻqituvchi', 'Dotsent', 'Professor'].map((v) => ({ value: v, label: v })) },
+          { name: 'degree', label: 'Ilmiy daraja', type: 'select', options: () => ['—', 'PhD', 'DSc'].map((v) => ({ value: v, label: v })) },
+          { name: 'departmentId', label: 'Kafedra', type: 'select', numeric: true, options: deptOptions },
+          { name: 'status', label: 'Holat', type: 'select', default: 'faol', options: () => ['faol', 'dekret', "ta'til"].map((v) => ({ value: v, label: v })) },
+          { name: 'email', label: 'Email' },
+        ]}
+        renderCells={(r) => <>{cell(<span className="font-medium">{r.fullName}</span>)}{cell(r.position)}{cell(r.degree || '—')}{cell(deptName(r.departmentId))}{statusCell(r.status)}{cell(r.email || '—')}</>}
+        extraActions={(r) => r.status === 'faol' && (
+          <button
+            title="Almashtirish (dekret/ta'til) — yuklamalarini hamkasblarga o'tkazish"
+            onClick={() => setHandover(r)}
+            className="rounded-md p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-500 dark:hover:bg-amber-950/40"
+          >
+            <UserRoundX size={15} />
+          </button>
+        )}
+      />
+      <HandoverWizard teacher={handover} onClose={() => setHandover(null)} />
+    </>
   )
 }
 
