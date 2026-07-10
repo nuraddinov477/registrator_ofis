@@ -27,6 +27,22 @@ function Card({ label, value, icon: Icon, color, to }) {
 
 const PIE_COLORS = ['#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#ec4899', '#14b8a6']
 
+// Hover'da rang ostidagi fakultet/kafedra haqida to'liq ma'lumot ko'rsatadi
+function InfoTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null
+  const d = payload[0].payload
+  return (
+    <div className="max-w-[260px] rounded-lg border border-slate-700 bg-[#0d1526]/95 px-3 py-2 text-xs text-white shadow-xl">
+      <p className="mb-1.5 font-semibold">{d.fullName}</p>
+      {d.info.map(([label, val]) => (
+        <p key={label} className="flex justify-between gap-4 text-slate-300">
+          <span>{label}</span><span className="font-medium text-white">{val}</span>
+        </p>
+      ))}
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const faculties = useCollection('faculties')
   const departments = useCollection('departments')
@@ -35,6 +51,7 @@ export default function Dashboard() {
   const groups = useCollection('groups')
   const rooms = useCollection('rooms')
   const loads = useCollection('loads')
+  const specialties = useCollection('specialties')
 
   const cards = [
     stat('Jami fakultetlar', faculties.length, Building2, 'bg-blue-500', '/faculties'),
@@ -46,15 +63,48 @@ export default function Dashboard() {
     stat('Haftalik darslar', loads.length, CalendarDays, 'bg-indigo-500', '/loads'),
   ]
 
-  const loadByFaculty = faculties.map((f) => ({
-    name: f.name.length > 22 ? f.name.slice(0, 22) + '…' : f.name,
-    value: departments.filter((d) => d.facultyId === f.id).length,
-  }))
+  const groupFacultyId = new Map(groups.map((g) => [g.id, g.facultyId]))
 
-  const teachersByDept = departments.map((d) => ({
-    name: d.name,
-    value: teachers.filter((t) => t.departmentId === d.id).length || 1,
-  }))
+  const loadByFaculty = faculties.map((f) => {
+    const deptIds = new Set(departments.filter((d) => d.facultyId === f.id).map((d) => d.id))
+    const teacherCount = teachers.filter((t) => deptIds.has(t.departmentId)).length
+    const groupCount = groups.filter((g) => g.facultyId === f.id).length
+    const loadCount = loads.filter((l) => groupFacultyId.get(l.groupId) === f.id).length
+    const specCount = specialties.filter((s) => s.facultyId === f.id).length
+    const studentCount = groups.filter((g) => g.facultyId === f.id).reduce((sum, g) => sum + (g.size || 0), 0)
+    return {
+      name: f.name.length > 22 ? f.name.slice(0, 22) + '…' : f.name,
+      fullName: f.name,
+      value: deptIds.size,
+      info: [
+        ['Kafedralar', deptIds.size],
+        ['Mutaxassisliklar', specCount],
+        ['Oʻqituvchilar', teacherCount],
+        ['Guruhlar', groupCount],
+        ['Talabalar', studentCount],
+        ['Haftalik darslar', loadCount],
+      ],
+    }
+  })
+
+  const teachersByDept = departments.map((d) => {
+    const deptTeacherIds = new Set(teachers.filter((t) => t.departmentId === d.id).map((t) => t.id))
+    const deptLoads = loads.filter((l) => deptTeacherIds.has(l.teacherId))
+    const subjectCount = new Set(deptLoads.map((l) => l.subjectId)).size
+    const weeklyHours = deptLoads.reduce((sum, l) => sum + (l.weeklyHours || 0), 0)
+    return {
+      name: d.name,
+      fullName: d.name,
+      value: deptTeacherIds.size || 1,
+      info: [
+        ['Fakultet', faculties.find((f) => f.id === d.facultyId)?.name || '—'],
+        ['Oʻqituvchilar', deptTeacherIds.size],
+        ['Dars beriladigan fanlar', subjectCount],
+        ['Haftalik darslar', deptLoads.length],
+        ['Haftalik soatlar', weeklyHours],
+      ],
+    }
+  })
 
   return (
     <div>
@@ -75,7 +125,7 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" stroke="#33415544" />
               <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} />
               <YAxis allowDecimals={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
-              <Tooltip contentStyle={{ background: '#0d1526', border: '1px solid #1e293b', borderRadius: 8, color: '#fff' }} />
+              <Tooltip content={<InfoTooltip />} cursor={{ fill: '#3b82f622' }} />
               <Bar dataKey="value" fill="#3b82f6" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -88,7 +138,7 @@ export default function Dashboard() {
               <Pie data={teachersByDept} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} innerRadius={45}>
                 {teachersByDept.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
               </Pie>
-              <Tooltip contentStyle={{ background: '#0d1526', border: '1px solid #1e293b', borderRadius: 8, color: '#fff' }} />
+              <Tooltip content={<InfoTooltip />} />
               <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8' }} />
             </PieChart>
           </ResponsiveContainer>
