@@ -132,9 +132,9 @@ export default function Layout() {
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
                 {(auth.user()?.fullName || 'AD').slice(0, 2).toUpperCase()}
               </div>
-              <span className="hidden text-sm font-medium sm:inline">
-                {auth.user()?.login || 'admin'}
-                {role && <span className="ml-1.5 text-xs font-normal text-slate-400">· {role}</span>}
+              <span className="hidden flex-col leading-tight sm:flex">
+                <span className="text-sm font-medium">{auth.user()?.fullName || auth.user()?.login || 'Admin'}</span>
+                {role && <span className="text-xs font-normal text-slate-400">{role}</span>}
               </span>
             </div>
             <button onClick={() => auth.clear()} title="Chiqish" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-red-500 dark:hover:bg-slate-800">
