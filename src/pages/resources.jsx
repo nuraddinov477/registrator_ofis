@@ -124,10 +124,10 @@ export function Groups() {
         { name: 'name', label: 'Guruh nomi', required: true },
         { name: 'facultyId', label: 'Fakultet', type: 'select', numeric: true, options: facultyOptions },
         { name: 'course', label: 'Kurs', type: 'number', default: 1 },
-        { name: 'students', label: 'Talabalar soni', type: 'number', default: 25 },
+        { name: 'size', label: 'Talabalar soni', type: 'number', default: 25 },
         { name: 'form', label: "Ta'lim shakli", type: 'select', options: () => ['Kunduzgi', 'Sirtqi', 'Kechki'].map((v) => ({ value: v, label: v })) },
       ]}
-      renderCells={(r) => <>{cell(<span className="font-medium">{r.name}</span>)}{cell(facultyName(r.facultyId))}{cell(`${r.course}-kurs`)}{cell(r.students)}{cell(r.form)}</>}
+      renderCells={(r) => <>{cell(<span className="font-medium">{r.name}</span>)}{cell(facultyName(r.facultyId))}{cell(`${r.course}-kurs`)}{cell(r.size)}{cell(r.form)}</>}
     />
   )
 }

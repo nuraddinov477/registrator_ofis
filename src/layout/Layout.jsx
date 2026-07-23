@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { auth } from '../api/client'
 import { canSeeRoute, unassignedScope, roleOf } from '../lib/access'
+import Assistant from '../components/Assistant.jsx'
 
 // Menyu 4 blokka guruhlangan — har rol faqat o'ziga ko'rinadigan bo'limlarni oladi,
 // bo'sh qolgan blok sarlavhasi bilan birga yashirinadi
@@ -152,6 +153,9 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* AI yordamchi — barcha sahifalarda suzuvchi chat */}
+      <Assistant />
     </div>
   )
 }

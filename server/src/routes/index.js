@@ -6,6 +6,7 @@ import { prisma, audit } from '../db.js'
 import { scheduleRouter } from './schedule.js'
 import { requestsRouter } from './requests.js'
 import { handoverRouter } from './handover.js'
+import { assistantRouter } from './assistant.js'
 import { requireRole } from '../auth/middleware.js'
 import { requireWrite, requireRead, scopeWhere as accessScopeWhere, scopeAssert as accessScopeAssert } from '../auth/access.js'
 import { hashPassword } from '../auth/password.js'
@@ -64,6 +65,9 @@ export function buildRoutes() {
 
   // Kafedralararo ariza (o'qituvchi/dars so'rovi)
   router.use('/requests', requestsRouter())
+
+  // AI yordamchi — tizimni tushuntiradi, ma'lumotni o'qiydi, engine'ni boshqaradi
+  router.use('/assistant', assistantRouter())
 
   // Audit logi — tizimdagi barcha o'zgarishlar tarixi.
   // Faqat Super Admin ko'radi. Tarix hech qachon avtomatik o'chmaydi —
