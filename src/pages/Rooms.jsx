@@ -14,6 +14,7 @@ export default function Rooms() {
   const [form, setForm] = useState({})
   const [fBuilding, setFBuilding] = useState('') // xona filtri: bino
   const [fType, setFType] = useState('')          // xona filtri: turi
+  const [fCap, setFCap] = useState('')            // xona filtri: minimal sig'im
 
   const isB = tab === 'buildings'
   const coll = isB ? 'buildings' : 'rooms'
@@ -23,6 +24,7 @@ export default function Rooms() {
     if (q && !Object.values(r).join(' ').toLowerCase().includes(q.toLowerCase())) return false
     if (!isB && fBuilding && Number(r.buildingId) !== Number(fBuilding)) return false
     if (!isB && fType && r.type !== fType) return false
+    if (!isB && fCap && Number(r.capacity) < Number(fCap)) return false
     return true
   })
 
@@ -64,8 +66,10 @@ export default function Rooms() {
             <option value="">Barcha turlar</option>
             {roomTypes.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          {(fBuilding || fType) && (
-            <button className="text-sm text-slate-500 hover:text-brand" onClick={() => { setFBuilding(''); setFType('') }}>Tozalash</button>
+          <input type="number" min="0" className="input h-9 w-36 py-1" placeholder="Sigʻim ≥" value={fCap}
+            onChange={(e) => setFCap(e.target.value)} title="Minimal sigʻim (o'rin soni)" />
+          {(fBuilding || fType || fCap) && (
+            <button className="text-sm text-slate-500 hover:text-brand" onClick={() => { setFBuilding(''); setFType(''); setFCap('') }}>Tozalash</button>
           )}
           <span className="text-xs text-slate-400">{list.length} ta xona</span>
         </div>
