@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
-import { db, useCollection } from '../data/store'
+import { db, useCollection, useIsLoading } from '../data/store'
 import { canWrite } from '../lib/access'
 import { PageHeader, SearchBar, Table, Modal, Field } from './ui'
 
@@ -9,6 +9,7 @@ const empty = (fields) => Object.fromEntries(fields.map((f) => [f.name, f.defaul
 // extraActions(row) — amallar katagiga qo'shimcha tugmalar (masalan, almashtirish ustasi)
 export default function CrudPage({ title, subtitle, icon, collection, fields, columns, renderCells, extraActions }) {
   const rows = useCollection(collection)
+  const loading = useIsLoading(collection)
   const writable = canWrite(collection)
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
@@ -45,6 +46,9 @@ export default function CrudPage({ title, subtitle, icon, collection, fields, co
         action={writable ? <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Qo'shish</button> : null}
       />
       <SearchBar value={q} onChange={setQ} />
+      {loading && rows.length === 0 ? (
+        <div className="card p-10 text-center text-slate-400">Yuklanmoqda…</div>
+      ) : (
       <Table
         columns={writable ? [...columns, 'Amallar'] : columns}
         rows={filtered}
@@ -67,6 +71,7 @@ export default function CrudPage({ title, subtitle, icon, collection, fields, co
           </tr>
         )}
       />
+      )}
 
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? `${title} — tahrirlash` : `${title} — qo'shish`}>
         <form onSubmit={save} className="space-y-4">

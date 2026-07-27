@@ -19,16 +19,28 @@ const listeners = new Set()
 const emit = () => listeners.forEach((l) => l())
 const subscribe = (cb) => { listeners.add(cb); return () => listeners.delete(cb) }
 
+// Backend (Render bepul) uxlab qolgan bo'lishi mumkin — birinchi so'rov muvaffaqiyatsiz
+// bo'lsa, ma'lumotni "bo'sh" deb ko'rsatmaymiz, balki backend uyg'onguncha qayta urinamiz.
+const RETRY_DELAYS = [0, 2000, 5000, 10000, 20000]
+
 function fetchColl(coll) {
   const ep = ENDPOINTS[coll]
   if (!ep) { cache[coll] = cache[coll] || EMPTY; loaded[coll] = true; return Promise.resolve() }
   if (inflight[coll]) return inflight[coll]
-  inflight[coll] = api(ep)
-    .then((rows) => { cache[coll] = rows })
-    .catch(() => { cache[coll] = cache[coll] || EMPTY })
-    .finally(() => { loaded[coll] = true; inflight[coll] = null; emit() })
+  inflight[coll] = (async () => {
+    emit() // "yuklanmoqda" holatini ko'rsatish uchun
+    for (let i = 0; i < RETRY_DELAYS.length; i++) {
+      if (RETRY_DELAYS[i]) await new Promise((r) => setTimeout(r, RETRY_DELAYS[i]))
+      try { cache[coll] = await api(ep); loaded[coll] = true; return }
+      catch { /* keyingi urinish; hammasi tugasa loaded=false qoladi → keyin qayta yuklanadi */ }
+    }
+    cache[coll] = cache[coll] || EMPTY
+  })().finally(() => { inflight[coll] = null; emit() })
   return inflight[coll]
 }
+
+// Kolleksiya hozir yuklanяptimi (birinchi marta, hali muvaffaqiyatli bo'lmagan)
+export const isLoading = (coll) => !!inflight[coll] && !loaded[coll]
 
 export function ensureLoaded(coll) { if (!loaded[coll]) fetchColl(coll) }
 function refresh(coll) { loaded[coll] = false; return fetchColl(coll) }
@@ -46,4 +58,9 @@ export function useCollection(coll) {
   const value = useSyncExternalStore(subscribe, () => cache[coll] || EMPTY, () => EMPTY)
   useEffect(() => { ensureLoaded(coll) }, [coll])
   return value
+}
+
+// Kolleksiya birinchi marta yuklanяptimi (spinner ko'rsatish uchun)
+export function useIsLoading(coll) {
+  return useSyncExternalStore(subscribe, () => isLoading(coll), () => false)
 }
