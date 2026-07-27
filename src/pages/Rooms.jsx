@@ -12,11 +12,19 @@ export default function Rooms() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({})
+  const [fBuilding, setFBuilding] = useState('') // xona filtri: bino
+  const [fType, setFType] = useState('')          // xona filtri: turi
 
   const isB = tab === 'buildings'
   const coll = isB ? 'buildings' : 'rooms'
   const writable = canWrite(coll)
-  const list = (isB ? buildings : rooms).filter((r) => Object.values(r).join(' ').toLowerCase().includes(q.toLowerCase()))
+  const roomTypes = [...new Set(rooms.map((r) => r.type).filter(Boolean))]
+  const list = (isB ? buildings : rooms).filter((r) => {
+    if (q && !Object.values(r).join(' ').toLowerCase().includes(q.toLowerCase())) return false
+    if (!isB && fBuilding && Number(r.buildingId) !== Number(fBuilding)) return false
+    if (!isB && fType && r.type !== fType) return false
+    return true
+  })
 
   const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '' } : { name: '', buildingId: '', capacity: 30, type: 'Maʼruza' }); setOpen(true) }
   const openEdit = (r) => { setEditing(r); setForm(r); setOpen(true) }
@@ -45,6 +53,23 @@ export default function Rooms() {
         <TabBtn id="buildings">Binolar ({buildings.length})</TabBtn>
         <TabBtn id="rooms">Xonalar ({rooms.length})</TabBtn>
       </div>
+
+      {!isB && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <select className="input h-9 w-auto py-1" value={fBuilding} onChange={(e) => setFBuilding(e.target.value)}>
+            <option value="">Barcha binolar</option>
+            {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+          <select className="input h-9 w-auto py-1" value={fType} onChange={(e) => setFType(e.target.value)}>
+            <option value="">Barcha turlar</option>
+            {roomTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          {(fBuilding || fType) && (
+            <button className="text-sm text-slate-500 hover:text-brand" onClick={() => { setFBuilding(''); setFType('') }}>Tozalash</button>
+          )}
+          <span className="text-xs text-slate-400">{list.length} ta xona</span>
+        </div>
+      )}
 
       <Table
         columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi']), ...(writable ? ['Amallar'] : [])]}
