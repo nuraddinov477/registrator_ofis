@@ -14,21 +14,25 @@ export default function CrudPage({ title, subtitle, icon, collection, fields, co
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(empty(fields))
+  const [err, setErr] = useState('')
 
   const filtered = rows.filter((r) =>
     Object.values(r).join(' ').toLowerCase().includes(q.toLowerCase())
   )
 
-  const openAdd = () => { setEditing(null); setForm(empty(fields)); setOpen(true) }
-  const openEdit = (row) => { setEditing(row); setForm(row); setOpen(true) }
+  const openAdd = () => { setEditing(null); setForm(empty(fields)); setErr(''); setOpen(true) }
+  const openEdit = (row) => { setEditing(row); setForm(row); setErr(''); setOpen(true) }
 
-  const save = (e) => {
+  const save = async (e) => {
     e.preventDefault()
+    setErr('')
     const payload = { ...form }
     fields.forEach((f) => { if (f.type === 'number') payload[f.name] = Number(payload[f.name]) || 0 })
-    if (editing) db.update(collection, editing.id, payload)
-    else db.add(collection, payload)
-    setOpen(false)
+    try {
+      if (editing) await db.update(collection, editing.id, payload)
+      else await db.add(collection, payload)
+      setOpen(false)
+    } catch (e) { setErr(e.message || 'Saqlashda xatolik') }
   }
 
   return (
@@ -69,7 +73,7 @@ export default function CrudPage({ title, subtitle, icon, collection, fields, co
           {fields.map((f) => (
             <Field key={f.name} label={f.label}>
               {f.type === 'select' ? (
-                <select className="input" value={form[f.name]} onChange={(e) => setForm({ ...form, [f.name]: f.numeric ? Number(e.target.value) : e.target.value })}>
+                <select className="input" value={form[f.name] ?? ''} onChange={(e) => setForm({ ...form, [f.name]: f.numeric ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value })}>
                   <option value="">—</option>
                   {f.options().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -84,6 +88,7 @@ export default function CrudPage({ title, subtitle, icon, collection, fields, co
               )}
             </Field>
           ))}
+          {err && <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">{err}</div>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>Bekor</button>
             <button type="submit" className="btn-primary">Saqlash</button>

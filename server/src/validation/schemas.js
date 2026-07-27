@@ -2,7 +2,8 @@ import { z } from 'zod'
 
 // Yordamchilar: '' yoki null/undefined -> null; raqamlar avtomatik o'giriladi
 const optStr = z.preprocess((v) => (v === '' || v == null ? null : String(v)), z.string().nullable())
-const optInt = z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().int().nullable())
+// Ixtiyoriy FK id: bo'sh/null/0 → null (0 hech qachon haqiqiy id emas, FK buzilishini oldini oladi)
+const optInt = z.preprocess((v) => (v === '' || v == null || Number(v) === 0 ? null : Number(v)), z.number().int().nullable())
 const reqInt = z.preprocess((v) => Number(v), z.number().int())
 const intDef = (d) => z.preprocess((v) => (v === '' || v == null ? d : Number(v)), z.number().int())
 const bool = z.preprocess((v) => (typeof v === 'string' ? v === 'true' : Boolean(v)), z.boolean())
