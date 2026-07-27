@@ -14,19 +14,32 @@ export function Loads() {
   const [tab, setTab] = useState('list')
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({})
+  const [err, setErr] = useState('')
+  const writable = canWrite('loads')
 
-  const save = (e) => {
+  const openAdd = () => { setEditing(null); setForm({}); setErr(''); setOpen(true) }
+  const openEdit = (l) => { setEditing(l); setForm({ teacherId: l.teacherId, subjectId: l.subjectId, groupId: l.groupId, semester: l.semester }); setErr(''); setOpen(true) }
+  const save = async (e) => {
     e.preventDefault()
-    db.add('loads', form) // Ma'ruza/Amaliy/Reyting fandan olinadi — bu yerda kiritilmaydi
-    setOpen(false); setForm({})
+    setErr('')
+    try {
+      if (editing) await db.update('loads', editing.id, form)
+      else await db.add('loads', form)
+      setOpen(false); setForm({}); setEditing(null)
+    } catch (e) { setErr(e.message || 'Saqlashda xatolik') }
+  }
+  const remove = async (l) => {
+    if (!confirm("O'chirishni tasdiqlaysizmi?")) return
+    try { await db.remove('loads', l.id) } catch (e) { alert(e.message || "O'chirishda xatolik") }
   }
   const nm = (coll, id) => db.get(coll).find((x) => x.id === Number(id))?.name || db.get(coll).find((x) => x.id === Number(id))?.fullName || '—'
 
   return (
     <div>
       <PageHeader title="O'quv yuklamasi" count={loads.length}
-        action={canWrite('loads') ? <button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> Qo'shish</button> : null} />
+        action={writable ? <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Qo'shish</button> : null} />
       <SearchBar value={q} onChange={setQ} />
       <div className="mb-4 inline-flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800/60">
         {[['list', "Yuklama ro'yxati"], ['teacher', "O'qituvchi yuklamasi"]].map(([id, l]) => (
@@ -34,7 +47,7 @@ export function Loads() {
         ))}
       </div>
       <Table
-        columns={['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', "Ma'ruza", 'Amaliy', 'Reyting', 'Jami']}
+        columns={writable ? ['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', "Ma'ruza", 'Amaliy', 'Reyting', 'Jami', 'Amallar'] : ['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', "Ma'ruza", 'Amaliy', 'Reyting', 'Jami']}
         rows={loads.filter((l) => Object.values(l).join(' ').toLowerCase().includes(q.toLowerCase()))}
         empty="Maʼlumot topilmadi"
         renderRow={(l) => {
@@ -50,17 +63,26 @@ export function Loads() {
             <td className="px-4 py-3">{s?.practice ?? '—'}</td>
             <td className="px-4 py-3">{s?.credit ?? '—'}</td>
             <td className="px-4 py-3 font-semibold">{(s?.lecture || 0) + (s?.practice || 0)}</td>
+            {writable && (
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-1">
+                  <button onClick={() => openEdit(l)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand dark:hover:bg-slate-800"><Pencil size={15} /></button>
+                  <button onClick={() => remove(l)} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/40"><Trash2 size={15} /></button>
+                </div>
+              </td>
+            )}
           </tr>
           )
         }}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Yuklama qo'shish">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Yuklamani tahrirlash' : "Yuklama qo'shish"}>
         <form onSubmit={save} className="space-y-4">
           <Field label="Oʻqituvchi"><select className="input" value={form.teacherId || ''} onChange={(e) => setForm({ ...form, teacherId: e.target.value })}><option value="">—</option>{teachers.map((t) => <option key={t.id} value={t.id}>{t.fullName}</option>)}</select></Field>
           <Field label="Fan"><select className="input" value={form.subjectId || ''} onChange={(e) => setForm({ ...form, subjectId: e.target.value })}><option value="">—</option>{subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
           <Field label="Guruh"><select className="input" value={form.groupId || ''} onChange={(e) => setForm({ ...form, groupId: e.target.value })}><option value="">—</option>{groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select></Field>
           <Field label="Semestr"><input className="input" type="number" value={form.semester || ''} onChange={(e) => setForm({ ...form, semester: e.target.value })} /></Field>
           <p className="text-xs text-slate-400">Maʼruza / Amaliy / Reyting (kredit) tanlangan <b>fan</b>dan avtomatik olinadi (Fanlar bazasidan).</p>
+          {err && <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">{err}</div>}
           <div className="flex justify-end gap-2 pt-2"><button type="button" className="btn-ghost" onClick={() => setOpen(false)}>Bekor</button><button type="submit" className="btn-primary">Saqlash</button></div>
         </form>
       </Modal>
