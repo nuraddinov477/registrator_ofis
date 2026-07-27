@@ -362,12 +362,30 @@ function TeacherAvailability({ avail }) {
     for (let p = 0; p < avail.pairs; p++) cols.push({ di, p, day, first: p === 0 })
   })
 
+  const [q, setQ] = useState('')
+  const query = q.trim().toLowerCase()
+  const filtered = query
+    ? avail.teachers.filter((t) =>
+        t.name.toLowerCase().includes(query) ||
+        t.grid.some((row) => row.some((c) => c && (c.subject || '').toLowerCase().includes(query))))
+    : avail.teachers
+
   if (!avail.teachers.length) {
     return <div className="card p-10 text-center text-slate-400">O'qituvchilar topilmadi.</div>
   }
 
   return (
-    <div className="card overflow-x-auto">
+    <div className="card">
+      <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-3 dark:border-slate-800">
+        <input
+          className="input max-w-xs"
+          placeholder="Qidirish: o'qituvchi ismi yoki fan…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <span className="text-xs text-slate-400">{filtered.length} / {avail.teachers.length} o'qituvchi</span>
+      </div>
+      <div className="overflow-x-auto">
       <table className="border-collapse text-xs">
         <thead>
           <tr>
@@ -389,7 +407,7 @@ function TeacherAvailability({ avail }) {
           </tr>
         </thead>
         <tbody>
-          {avail.teachers.map((t) => (
+          {filtered.map((t) => (
             <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
               <td className="sticky left-0 z-10 whitespace-nowrap border-b border-slate-100 bg-white px-3 py-1.5 dark:border-slate-800/60 dark:bg-slate-900">
                 <span className="font-medium text-slate-700 dark:text-slate-200">{t.name}</span>
@@ -410,6 +428,10 @@ function TeacherAvailability({ avail }) {
           ))}
         </tbody>
       </table>
+      {filtered.length === 0 && (
+        <div className="p-6 text-center text-sm text-slate-400">"{q}" bo'yicha o'qituvchi topilmadi</div>
+      )}
+      </div>
       <div className="flex flex-wrap items-center gap-4 px-3 py-2.5 text-xs text-slate-500 dark:text-slate-400">
         <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-[3px] bg-emerald-500/60" /> bo'sh vaqt</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-[3px] bg-rose-500/80" /> band (dars bor)</span>
