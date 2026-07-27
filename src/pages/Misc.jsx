@@ -51,8 +51,11 @@ export function Loads() {
         rows={loads.filter((l) => Object.values(l).join(' ').toLowerCase().includes(q.toLowerCase()))}
         empty="Maʼlumot topilmadi"
         renderRow={(l) => {
-          // Ma'ruza / Amaliy / Reyting fan (Subject) ma'lumotidan olinadi
+          // Ma'ruza / Amaliy — fandan (Subject); Reyting — guruh talabalar soni × 0.8
           const s = subjects.find((x) => x.id === Number(l.subjectId))
+          const g = groups.find((x) => x.id === Number(l.groupId))
+          const rating = g ? Math.round(g.size * 0.8 * 10) / 10 : null
+          const total = Math.round(((s?.lecture || 0) + (s?.practice || 0) + (rating || 0)) * 10) / 10
           return (
           <tr key={l.id} className="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
             <td className="px-4 py-3">{nm('teachers', l.teacherId)}</td>
@@ -61,8 +64,8 @@ export function Loads() {
             <td className="px-4 py-3">{l.semester}</td>
             <td className="px-4 py-3">{s?.lecture ?? '—'}</td>
             <td className="px-4 py-3">{s?.practice ?? '—'}</td>
-            <td className="px-4 py-3">{s?.credit ?? '—'}</td>
-            <td className="px-4 py-3 font-semibold">{(s?.lecture || 0) + (s?.practice || 0)}</td>
+            <td className="px-4 py-3">{rating ?? '—'}</td>
+            <td className="px-4 py-3 font-semibold">{total}</td>
             {writable && (
               <td className="px-4 py-3">
                 <div className="flex items-center gap-1">
