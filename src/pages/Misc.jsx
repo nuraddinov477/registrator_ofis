@@ -18,7 +18,7 @@ export function Loads() {
 
   const save = (e) => {
     e.preventDefault()
-    db.add('loads', { ...form, lecture: Number(form.lecture) || 0, practice: Number(form.practice) || 0, rating: Number(form.rating) || 0 })
+    db.add('loads', form) // Ma'ruza/Amaliy/Reyting fandan olinadi — bu yerda kiritilmaydi
     setOpen(false); setForm({})
   }
   const nm = (coll, id) => db.get(coll).find((x) => x.id === Number(id))?.name || db.get(coll).find((x) => x.id === Number(id))?.fullName || '—'
@@ -37,29 +37,30 @@ export function Loads() {
         columns={['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', "Ma'ruza", 'Amaliy', 'Reyting', 'Jami']}
         rows={loads.filter((l) => Object.values(l).join(' ').toLowerCase().includes(q.toLowerCase()))}
         empty="Maʼlumot topilmadi"
-        renderRow={(l) => (
+        renderRow={(l) => {
+          // Ma'ruza / Amaliy / Reyting fan (Subject) ma'lumotidan olinadi
+          const s = subjects.find((x) => x.id === Number(l.subjectId))
+          return (
           <tr key={l.id} className="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
             <td className="px-4 py-3">{nm('teachers', l.teacherId)}</td>
             <td className="px-4 py-3">{nm('subjects', l.subjectId)}</td>
             <td className="px-4 py-3">{nm('groups', l.groupId)}</td>
             <td className="px-4 py-3">{l.semester}</td>
-            <td className="px-4 py-3">{l.lecture}</td>
-            <td className="px-4 py-3">{l.practice}</td>
-            <td className="px-4 py-3">{l.rating}</td>
-            <td className="px-4 py-3 font-semibold">{(l.lecture || 0) + (l.practice || 0) + (l.rating || 0)}</td>
+            <td className="px-4 py-3">{s?.lecture ?? '—'}</td>
+            <td className="px-4 py-3">{s?.practice ?? '—'}</td>
+            <td className="px-4 py-3">{s?.credit ?? '—'}</td>
+            <td className="px-4 py-3 font-semibold">{(s?.lecture || 0) + (s?.practice || 0)}</td>
           </tr>
-        )}
+          )
+        }}
       />
       <Modal open={open} onClose={() => setOpen(false)} title="Yuklama qo'shish">
         <form onSubmit={save} className="space-y-4">
           <Field label="Oʻqituvchi"><select className="input" value={form.teacherId || ''} onChange={(e) => setForm({ ...form, teacherId: e.target.value })}><option value="">—</option>{teachers.map((t) => <option key={t.id} value={t.id}>{t.fullName}</option>)}</select></Field>
           <Field label="Fan"><select className="input" value={form.subjectId || ''} onChange={(e) => setForm({ ...form, subjectId: e.target.value })}><option value="">—</option>{subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
           <Field label="Guruh"><select className="input" value={form.groupId || ''} onChange={(e) => setForm({ ...form, groupId: e.target.value })}><option value="">—</option>{groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select></Field>
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Semestr"><input className="input" value={form.semester || ''} onChange={(e) => setForm({ ...form, semester: e.target.value })} /></Field>
-            <Field label="Maʼruza"><input className="input" type="number" value={form.lecture || ''} onChange={(e) => setForm({ ...form, lecture: e.target.value })} /></Field>
-            <Field label="Amaliy"><input className="input" type="number" value={form.practice || ''} onChange={(e) => setForm({ ...form, practice: e.target.value })} /></Field>
-          </div>
+          <Field label="Semestr"><input className="input" type="number" value={form.semester || ''} onChange={(e) => setForm({ ...form, semester: e.target.value })} /></Field>
+          <p className="text-xs text-slate-400">Maʼruza / Amaliy / Reyting (kredit) tanlangan <b>fan</b>dan avtomatik olinadi (Fanlar bazasidan).</p>
           <div className="flex justify-end gap-2 pt-2"><button type="button" className="btn-ghost" onClick={() => setOpen(false)}>Bekor</button><button type="submit" className="btn-primary">Saqlash</button></div>
         </form>
       </Modal>
