@@ -1,0 +1,43 @@
+# Lokal Docker stack — Render'dagi bilan AYNAN bir xil image + lokal PostgreSQL.
+# Portlar atayin boshqacha (API 4100, Postgres 5434) — lokal dev (4000/5432/5433) ga tegmaydi.
+#
+#   Ishga tushirish:  docker compose -f docker-compose.local.yml up -d --build
+#   Demo ma'lumot:    docker compose -f docker-compose.local.yml exec api node prisma/seed.js
+#   To'xtatish:       docker compose -f docker-compose.local.yml down
+#   Baza bilan o'chirish: docker compose -f docker-compose.local.yml down -v
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: uni
+      POSTGRES_PASSWORD: uni
+      POSTGRES_DB: unischedule
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata-local:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uni -d unischedule"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./server
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://uni:uni@db:5432/unischedule?schema=public
+      PORT: 4000
+      NODE_ENV: production
+      CLIENT_ORIGIN: http://localhost:5173,http://localhost:5174
+      JWT_SECRET: local-docker-secret
+      # Seed har boot'da bazani tozalaydi — shuning uchun bu yerda o'chiq.
+      # Demo ma'lumot uchun yuqoridagi "exec api node prisma/seed.js" ni bir marta ishlating.
+      SEED_ON_START: "false"
+    ports:
+      - "4100:4000"
+
+volumes:
+  pgdata-local:

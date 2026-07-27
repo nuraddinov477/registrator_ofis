@@ -45,9 +45,11 @@ export const sectionOf = (resource) => SECTION[resource] ?? resource
 
 // Yaratuvchi qaysi rollarni bera oladi (delegatsiya ierarxiyasi)
 export function assignableRoles(user) {
-  if (isSuperAdmin(user)) return [SUPER, OPERATOR, MUDIR, TEACHER]
-  if (user?.role === OPERATOR) return [MUDIR, TEACHER]
-  if (user?.role === MUDIR) return [TEACHER]
+  // O'qituvchilar tizimga kirmaydi — TEACHER roli akkauntga berilmaydi (hozircha).
+  // Teacher DATA yozuvi (jadval uchun) saqlanadi; faqat login/profil o'chirilgan.
+  if (isSuperAdmin(user)) return [SUPER, OPERATOR, MUDIR]
+  if (user?.role === OPERATOR) return [MUDIR]
+  if (user?.role === MUDIR) return []
   return []
 }
 

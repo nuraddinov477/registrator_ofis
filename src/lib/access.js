@@ -88,9 +88,10 @@ export function canSeeRoute(path, user) {
 // Yaratuvchi qaysi rollarni bera oladi (delegatsiya ierarxiyasi)
 export function assignableRoles(user) {
   const u = user ?? auth.user()
-  if (isSuperAdmin(u)) return [SUPER, OPERATOR, MUDIR, TEACHER]
-  if (u?.role === OPERATOR) return [MUDIR, TEACHER]
-  if (u?.role === MUDIR) return [TEACHER]
+  // O'qituvchilar tizimga kirmaydi — TEACHER roli akkauntga berilmaydi (hozircha).
+  if (isSuperAdmin(u)) return [SUPER, OPERATOR, MUDIR]
+  if (u?.role === OPERATOR) return [MUDIR]
+  if (u?.role === MUDIR) return []
   return []
 }
 
