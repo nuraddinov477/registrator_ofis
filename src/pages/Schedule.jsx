@@ -36,6 +36,8 @@ export default function Schedule() {
   const [semester, setSemester] = useState('1')
   const [seconds, setSeconds] = useState(5)
   const [busy, setBusy] = useState('') // generatsiya davom etayotgan bo'lsa — holat matni
+  // Jadval sanasi (haftaning boshi / amal qilish sanasi) — lokalda saqlanadi
+  const [date, setDate] = useState(() => localStorage.getItem('smartjadval-schedule-date') || new Date().toISOString().slice(0, 10))
 
   const role = roleOf()
   const isTeacher = role === ROLES.TEACHER
@@ -159,6 +161,11 @@ export default function Schedule() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+            Sana:
+            <input type="date" className="input h-9 w-auto py-1" value={date}
+              onChange={(e) => { setDate(e.target.value); localStorage.setItem('smartjadval-schedule-date', e.target.value) }} title="Jadval sanasi" />
+          </label>
           <button className="btn-ghost" onClick={() => loadMeta(runId)} title="Yangilash"><RefreshCw size={15} /></button>
           {canGenerate && (
             <button className="btn-primary" disabled={!!busy} onClick={() => setGenOpen(true)}>
