@@ -213,3 +213,14 @@ scheduleRouter.delete('/runs/:id/entries/:entryId', requireRole('Super Admin'), 
   await audit("Jadvaldan dars o'chirildi", `run #${runId}`, req)
   res.status(204).end()
 }))
+
+// DELETE /api/schedule/runs/:id  — butun jadvalni (run) va uning barcha darslarini o'chirish
+scheduleRouter.delete('/runs/:id', requireRole('Super Admin', 'Fakultet operatori'), asyncHandler(async (req, res) => {
+  const id = Number(req.params.id)
+  const run = await prisma.schedulingRun.findUnique({ where: { id } })
+  if (!run) return res.status(404).json({ error: 'Jadval topilmadi' })
+  // ScheduleEntry.run relation onDelete: Cascade — darslar avtomatik o'chadi
+  await prisma.schedulingRun.delete({ where: { id } })
+  await audit("O'chirildi: Jadval", `run #${id}`, req)
+  res.status(204).end()
+}))

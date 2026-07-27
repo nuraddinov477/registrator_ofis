@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Zap, Loader2, RefreshCw, CalendarDays } from 'lucide-react'
+import { Zap, Loader2, RefreshCw, CalendarDays, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import { roleOf, ROLES } from '../lib/access'
 import { Modal, Field, Badge } from '../components/ui'
@@ -148,6 +148,19 @@ export default function Schedule() {
     } catch (e) { setEditErr(e.message) } finally { setSaving(false) }
   }
 
+  // Butun jadvalni (run) o'chirish
+  const deleteRun = async () => {
+    if (!runId) return
+    if (!confirm(`#${runId} jadval butunlay o'chirilsinmi? Barcha darslari bilan o'chadi.`)) return
+    try {
+      await api(`/schedule/runs/${runId}`, { method: 'DELETE' })
+      const rs = await api('/schedule/runs')
+      setRuns(rs)
+      setRunId((rs.find((r) => r.status === 'done') || rs[0])?.id ?? null)
+      setGrid(null); setAvail(null)
+    } catch (e) { setErr(e.message) }
+  }
+
   const statusBadge = (s) => s === 'done' ? <Badge color="green">tayyor</Badge>
     : s === 'failed' ? <Badge color="red">xato</Badge>
       : <Badge color="amber">ishlanmoqda</Badge>
@@ -196,6 +209,12 @@ export default function Schedule() {
             ))}
           </select>
         </Field>
+        {canGenerate && runId && (
+          <button onClick={deleteRun} title="Tanlangan jadvalni o'chirish"
+            className="mb-0.5 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm text-red-500 hover:bg-red-500/10">
+            <Trash2 size={15} /> O'chirish
+          </button>
+        )}
         {isTeacher && <div className="pb-2"><Badge color="blue">Mening jadvalim</Badge></div>}
         {!isTeacher && (
           <div className="pb-2">
