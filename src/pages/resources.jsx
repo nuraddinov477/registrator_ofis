@@ -100,17 +100,15 @@ export function Subjects() {
   return (
     <CrudPage
       title="Fanlar bazasi" icon={Library} collection="subjects"
-      columns={['Nomi', 'Kodi', 'Turi', 'Kredit', 'Maʼruza', 'Amaliy', 'Semestr']}
+      columns={['Nomi', 'Kodi', 'Turi', 'Kredit', 'Semestr']}
       fields={[
         { name: 'name', label: 'Nomi', required: true },
         { name: 'code', label: 'Kodi' },
         { name: 'type', label: 'Turi', type: 'select', options: () => ['Majburiy', 'Tanlov'].map((v) => ({ value: v, label: v })) },
         { name: 'credit', label: 'Kredit', type: 'number', default: 3 },
-        { name: 'lecture', label: 'Maʼruza (soat)', type: 'number', default: 30 },
-        { name: 'practice', label: 'Amaliy (soat)', type: 'number', default: 30 },
         { name: 'semester', label: 'Semestr', type: 'number', default: 1 },
       ]}
-      renderCells={(r) => <>{cell(<span className="font-medium">{r.name}</span>)}{codeCell(r.code)}{cell(r.type)}{cell(r.credit)}{cell(r.lecture)}{cell(r.practice)}{cell(r.semester)}</>}
+      renderCells={(r) => <>{cell(<span className="font-medium">{r.name}</span>)}{codeCell(r.code)}{cell(r.type)}{cell(r.credit)}{cell(r.semester)}</>}
     />
   )
 }

@@ -20,7 +20,7 @@ export function Loads() {
   const writable = canWrite('loads')
 
   const openAdd = () => { setEditing(null); setForm({}); setErr(''); setOpen(true) }
-  const openEdit = (l) => { setEditing(l); setForm({ teacherId: l.teacherId, subjectId: l.subjectId, groupId: l.groupId, semester: l.semester }); setErr(''); setOpen(true) }
+  const openEdit = (l) => { setEditing(l); setForm({ teacherId: l.teacherId, subjectId: l.subjectId, groupId: l.groupId, semester: l.semester, weeklyHours: l.weeklyHours }); setErr(''); setOpen(true) }
   const save = async (e) => {
     e.preventDefault()
     setErr('')
@@ -47,23 +47,21 @@ export function Loads() {
         ))}
       </div>
       <Table
-        columns={writable ? ['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', "Ma'ruza", 'Amaliy', 'Reyting', 'Jami', 'Amallar'] : ['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', "Ma'ruza", 'Amaliy', 'Reyting', 'Jami']}
+        columns={writable ? ['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami', 'Amallar'] : ['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami']}
         rows={loads.filter((l) => Object.values(l).join(' ').toLowerCase().includes(q.toLowerCase()))}
         empty="Maʼlumot topilmadi"
         renderRow={(l) => {
-          // Ma'ruza / Amaliy — fandan (Subject); Reyting — guruh talabalar soni × 0.8
-          const s = subjects.find((x) => x.id === Number(l.subjectId))
+          // Fan soati — shu yuklamaning o'zida (weeklyHours); Reyting — guruh talabalar soni × 0.8
           const g = groups.find((x) => x.id === Number(l.groupId))
           const rating = g ? Math.round(g.size * 0.8 * 10) / 10 : null
-          const total = Math.round(((s?.lecture || 0) + (s?.practice || 0) + (rating || 0)) * 10) / 10
+          const total = Math.round(((l.weeklyHours || 0) + (rating || 0)) * 10) / 10
           return (
           <tr key={l.id} className="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
             <td className="px-4 py-3">{nm('teachers', l.teacherId)}</td>
             <td className="px-4 py-3">{nm('subjects', l.subjectId)}</td>
             <td className="px-4 py-3">{nm('groups', l.groupId)}</td>
             <td className="px-4 py-3">{l.semester}</td>
-            <td className="px-4 py-3">{s?.lecture ?? '—'}</td>
-            <td className="px-4 py-3">{s?.practice ?? '—'}</td>
+            <td className="px-4 py-3">{l.weeklyHours ?? '—'}</td>
             <td className="px-4 py-3">{rating ?? '—'}</td>
             <td className="px-4 py-3 font-semibold">{total}</td>
             {writable && (
@@ -84,7 +82,8 @@ export function Loads() {
           <Field label="Fan"><select className="input" value={form.subjectId || ''} onChange={(e) => setForm({ ...form, subjectId: e.target.value })}><option value="">—</option>{subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
           <Field label="Guruh"><select className="input" value={form.groupId || ''} onChange={(e) => setForm({ ...form, groupId: e.target.value })}><option value="">—</option>{groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select></Field>
           <Field label="Semestr"><input className="input" type="number" value={form.semester || ''} onChange={(e) => setForm({ ...form, semester: e.target.value })} /></Field>
-          <p className="text-xs text-slate-400">Maʼruza / Amaliy / Reyting (kredit) tanlangan <b>fan</b>dan avtomatik olinadi (Fanlar bazasidan).</p>
+          <Field label="Fan soati (haftalik)"><input className="input" type="number" value={form.weeklyHours ?? ''} onChange={(e) => setForm({ ...form, weeklyHours: e.target.value })} /></Field>
+          <p className="text-xs text-slate-400">Reyting guruh talabalar sonidan avtomatik hisoblanadi (talabalar × 0.8).</p>
           {err && <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">{err}</div>}
           <div className="flex justify-end gap-2 pt-2"><button type="button" className="btn-ghost" onClick={() => setOpen(false)}>Bekor</button><button type="submit" className="btn-primary">Saqlash</button></div>
         </form>
