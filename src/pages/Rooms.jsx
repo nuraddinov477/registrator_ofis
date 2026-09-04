@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Plus, Pencil, Trash2, X } from 'lucide-react'
-import { db, useCollection } from '../data/store'
+import { db, useCollection, useIsLoading } from '../data/store'
 import { canWrite } from '../lib/access'
 import { SearchBar, Table, Modal, Field, Badge } from '../components/ui'
 
@@ -24,6 +24,7 @@ export default function Rooms() {
   const isB = tab === 'buildings'
   const coll = isB ? 'buildings' : 'rooms'
   const writable = canWrite(coll)
+  const loading = useIsLoading(coll)
   const roomTypes = [...new Set(rooms.map((r) => r.kind).filter(Boolean))]
   const list = (isB ? buildings : rooms).filter((r) => {
     if (q && !Object.values(r).join(' ').toLowerCase().includes(q.toLowerCase())) return false
@@ -92,6 +93,9 @@ export default function Rooms() {
         </div>
       )}
 
+      {loading && list.length === 0 ? (
+        <div className="card p-10 text-center text-slate-400">Yuklanmoqda… (server uxlab qolgan bo'lishi mumkin, biroz kuting)</div>
+      ) : (
       <Table
         columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Xususiyatlar']), ...(writable ? ['Amallar'] : [])]}
         rows={list}
@@ -124,6 +128,7 @@ export default function Rooms() {
           </tr>
         )}
       />
+      )}
 
       <Modal open={open} onClose={() => setOpen(false)} title={`${isB ? 'Bino' : 'Xona'} ${editing ? 'tahrirlash' : "qo'shish"}`}>
         <form onSubmit={save} className="space-y-4">
