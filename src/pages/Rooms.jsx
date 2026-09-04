@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Plus, Pencil, Trash2, X } from 'lucide-react'
-import { db, useCollection, useIsLoading } from '../data/store'
+import { db, useCollection, useIsLoading, useLoadFailed, retry } from '../data/store'
 import { canWrite } from '../lib/access'
-import { SearchBar, Table, Modal, Field, Badge } from '../components/ui'
+import { SearchBar, Table, Modal, Field, Badge, DataState } from '../components/ui'
 
 // Xona jihoz/xususiyatlari — belgilash mumkin bo'lgan sobit ro'yxat
 const ROOM_FEATURES = ['Proyektor', 'Konditsioner', 'Interaktiv doska', 'Kompyuterlar', 'Ovoz tizimi', 'Internet (Wi-Fi)']
@@ -25,6 +25,7 @@ export default function Rooms() {
   const coll = isB ? 'buildings' : 'rooms'
   const writable = canWrite(coll)
   const loading = useIsLoading(coll)
+  const failed = useLoadFailed(coll)
   const roomTypes = [...new Set(rooms.map((r) => r.kind).filter(Boolean))]
   const list = (isB ? buildings : rooms).filter((r) => {
     if (q && !Object.values(r).join(' ').toLowerCase().includes(q.toLowerCase())) return false
@@ -93,8 +94,8 @@ export default function Rooms() {
         </div>
       )}
 
-      {loading && list.length === 0 ? (
-        <div className="card p-10 text-center text-slate-400">Yuklanmoqda… (server uxlab qolgan bo'lishi mumkin, biroz kuting)</div>
+      {(loading || failed) && list.length === 0 ? (
+        <DataState loading={loading} onRetry={() => retry(coll)} />
       ) : (
       <Table
         columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Xususiyatlar']), ...(writable ? ['Amallar'] : [])]}

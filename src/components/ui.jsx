@@ -151,6 +151,20 @@ export function SearchableSelect({ value, onChange, options, placeholder = 'Qidi
   )
 }
 
+// Ro'yxat hali yuklanayotgan yoki qayta urinishlar tugab muvaffaqiyatsiz bo'lgan holat.
+// Ikkisi orasidagi farq muhim: "loading" — kuting, "failed" — internetni tekshirib qayta urining.
+export function DataState({ loading, onRetry }) {
+  if (loading) {
+    return <div className="card p-10 text-center text-slate-400">Yuklanmoqda… (server uxlab qolgan bo'lishi mumkin, biroz kuting)</div>
+  }
+  return (
+    <div className="card flex flex-col items-center gap-3 p-10 text-center">
+      <p className="text-slate-400">Ma'lumotlarni yuklab bo'lmadi — internet aloqasini tekshiring yoki qayta urinib ko'ring.</p>
+      <button onClick={onRetry} className="btn-primary">Qayta urinish</button>
+    </div>
+  )
+}
+
 export function Field({ label, children }) {
   return (
     <label className="block">

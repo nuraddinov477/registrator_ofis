@@ -13,37 +13,43 @@ const ENDPOINTS = {
 const EMPTY = []
 const cache = {}
 const loaded = {}
+const attempted = {} // hech bo'lmasa bitta urinish qilinganmi (birinchi render'da "xato" ko'rsatib yubormaslik uchun)
 const inflight = {}
 const listeners = new Set()
 
 const emit = () => listeners.forEach((l) => l())
 const subscribe = (cb) => { listeners.add(cb); return () => listeners.delete(cb) }
 
-// Backend (Render bepul) uxlab qolgan bo'lishi mumkin — birinchi so'rov muvaffaqiyatsiz
-// bo'lsa, ma'lumotni "bo'sh" deb ko'rsatmaymiz, balki backend uyg'onguncha qayta urinamiz.
+// Backend (Render bepul) uxlab qolgan yoki tarmoq beqaror bo'lishi mumkin — birinchi
+// so'rov muvaffaqiyatsiz bo'lsa, ma'lumotni "bo'sh" deb ko'rsatmaymiz, balki qayta urinamiz.
 const RETRY_DELAYS = [0, 2000, 5000, 10000, 20000]
 
 function fetchColl(coll) {
   const ep = ENDPOINTS[coll]
-  if (!ep) { cache[coll] = cache[coll] || EMPTY; loaded[coll] = true; return Promise.resolve() }
+  if (!ep) { cache[coll] = cache[coll] || EMPTY; loaded[coll] = true; attempted[coll] = true; return Promise.resolve() }
   if (inflight[coll]) return inflight[coll]
+  attempted[coll] = true
   inflight[coll] = (async () => {
     emit() // "yuklanmoqda" holatini ko'rsatish uchun
     for (let i = 0; i < RETRY_DELAYS.length; i++) {
       if (RETRY_DELAYS[i]) await new Promise((r) => setTimeout(r, RETRY_DELAYS[i]))
       try { cache[coll] = await api(ep); loaded[coll] = true; return }
-      catch { /* keyingi urinish; hammasi tugasa loaded=false qoladi → keyin qayta yuklanadi */ }
+      catch { /* keyingi urinish; hammasi tugasa loaded=false qoladi → "yuklab bo'lmadi" holati ko'rsatiladi */ }
     }
-    cache[coll] = cache[coll] || EMPTY
   })().finally(() => { inflight[coll] = null; emit() })
   return inflight[coll]
 }
 
 // Kolleksiya hozir yuklanяptimi (birinchi marta, hali muvaffaqiyatli bo'lmagan)
 export const isLoading = (coll) => !!inflight[coll] && !loaded[coll]
+// Barcha qayta urinishlar tugadi, lekin muvaffaqiyatsiz — internet/server bilan muammo
+// (haqiqiy bo'sh ro'yxatdan farqi: loaded=true bo'lganda rows.length===0 "bo'sh", bu esa "xato")
+export const hasFailed = (coll) => !!attempted[coll] && !inflight[coll] && !loaded[coll]
 
 export function ensureLoaded(coll) { if (!loaded[coll]) fetchColl(coll) }
 function refresh(coll) { loaded[coll] = false; return fetchColl(coll) }
+// Foydalanuvchi "Qayta urinish" tugmasini bossa — muvaffaqiyatsizlikdan keyin qo'lda qayta yuklash
+export const retry = refresh
 
 export const db = {
   get: (coll) => { ensureLoaded(coll); return cache[coll] || EMPTY },
@@ -63,4 +69,9 @@ export function useCollection(coll) {
 // Kolleksiya birinchi marta yuklanяptimi (spinner ko'rsatish uchun)
 export function useIsLoading(coll) {
   return useSyncExternalStore(subscribe, () => isLoading(coll), () => false)
+}
+
+// Barcha qayta urinishlar tugadi-yu muvaffaqiyatsiz bo'ldi (xato holati, "Qayta urinish" tugmasi uchun)
+export function useLoadFailed(coll) {
+  return useSyncExternalStore(subscribe, () => hasFailed(coll), () => false)
 }

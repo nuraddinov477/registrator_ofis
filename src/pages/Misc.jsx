@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { BookOpen, FileText, UserCog, ShieldCheck, Plus, Pencil, Trash2 } from 'lucide-react'
-import { db, useCollection } from '../data/store'
+import { db, useCollection, useIsLoading, useLoadFailed, retry } from '../data/store'
 import { api, auth } from '../api/client'
 import { canWrite, assignableRoles, writableSections, visibleSections, SECTION_LABELS } from '../lib/access'
-import { PageHeader, SearchBar, Table, Modal, Field, Badge, SearchableSelect } from '../components/ui'
+import { PageHeader, SearchBar, Table, Modal, Field, Badge, SearchableSelect, DataState } from '../components/ui'
 
 /* ---------- O'quv yuklamasi ---------- */
 export function Loads() {
@@ -11,6 +11,8 @@ export function Loads() {
   const subjects = useCollection('subjects')
   const teachers = useCollection('teachers')
   const groups = useCollection('groups')
+  const loading = useIsLoading('loads')
+  const failed = useLoadFailed('loads')
   const [tab, setTab] = useState('list')
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
@@ -46,6 +48,9 @@ export function Loads() {
           <button key={id} onClick={() => setTab(id)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${tab === id ? 'bg-brand text-white' : 'text-slate-500'}`}>{l}</button>
         ))}
       </div>
+      {(loading || failed) && loads.length === 0 ? (
+        <DataState loading={loading} onRetry={() => retry('loads')} />
+      ) : (
       <Table
         columns={writable ? ['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami', 'Amallar'] : ['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami']}
         rows={loads.filter((l) => Object.values(l).join(' ').toLowerCase().includes(q.toLowerCase()))}
@@ -76,6 +81,7 @@ export function Loads() {
           )
         }}
       />
+      )}
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Yuklamani tahrirlash' : "Yuklama qo'shish"}>
         <form onSubmit={save} className="space-y-4">
           <Field label="Oʻqituvchi">

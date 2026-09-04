@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
-import { db, useCollection, useIsLoading } from '../data/store'
+import { db, useCollection, useIsLoading, useLoadFailed, retry } from '../data/store'
 import { canWrite } from '../lib/access'
-import { PageHeader, SearchBar, Table, Modal, Field } from './ui'
+import { PageHeader, SearchBar, Table, Modal, Field, DataState } from './ui'
 
 const empty = (fields) => Object.fromEntries(fields.map((f) => [f.name, f.default ?? '']))
 
@@ -10,6 +10,7 @@ const empty = (fields) => Object.fromEntries(fields.map((f) => [f.name, f.defaul
 export default function CrudPage({ title, subtitle, icon, collection, fields, columns, renderCells, extraActions }) {
   const rows = useCollection(collection)
   const loading = useIsLoading(collection)
+  const failed = useLoadFailed(collection)
   const writable = canWrite(collection)
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
@@ -46,8 +47,8 @@ export default function CrudPage({ title, subtitle, icon, collection, fields, co
         action={writable ? <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Qo'shish</button> : null}
       />
       <SearchBar value={q} onChange={setQ} />
-      {loading && rows.length === 0 ? (
-        <div className="card p-10 text-center text-slate-400">Yuklanmoqda…</div>
+      {(loading || failed) && rows.length === 0 ? (
+        <DataState loading={loading} onRetry={() => retry(collection)} />
       ) : (
       <Table
         columns={writable ? [...columns, 'Amallar'] : columns}
