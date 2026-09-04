@@ -11,7 +11,7 @@ function verify(ctx) {
   let unplaced = 0
   for (const e of ctx.events) {
     if (e.slot < 0 || e.room < 0) { unplaced++; continue }
-    bump(gm, `${e.groupId}|${e.slot}`)
+    for (const gid of e.groupIds) bump(gm, `${gid}|${e.slot}`)
     bump(tm, `${e.teacherId}|${e.slot}`)
     bump(rm, `${e.room}|${e.slot}`)
   }
@@ -24,7 +24,7 @@ function verify(ctx) {
     soft: Math.round(totalSoft(ctx)),
     feasible: hard === 0 && unplaced === 0,
     unplaced,
-    infeasibleEvents: ctx.infeasible.map((e) => ({ group: e.groupName, subject: e.subjectName, reason: 'mos xona yo\'q' })),
+    infeasibleEvents: ctx.infeasible.map((e) => ({ group: e.groupNames?.join(', '), subject: e.subjectName, reason: 'mos xona yo\'q' })),
   }
 }
 
@@ -48,12 +48,14 @@ export async function solve(prisma, options = {}) {
   const annealStats = anneal(ctx, occ, { maxMs, ...annealOpts })
   const report = verify(ctx)
 
+  // Potok: bitta event bir nechta guruhga tegishli bo'lsa ham, ScheduleEntry (chiqish)
+  // HAR GURUH uchun alohida qator bo'lib yoziladi — har guruh o'z jadvalini avvalgidek ko'radi
   const entries = ctx.events
     .filter((e) => e.slot >= 0 && e.room >= 0)
-    .map((e) => ({
-      groupId: e.groupId, teacherId: e.teacherId, subjectId: e.subjectId,
+    .flatMap((e) => e.groupIds.map((groupId) => ({
+      groupId, teacherId: e.teacherId, subjectId: e.subjectId,
       roomId: e.room, day: dayOf(e.slot), pair: pairOf(e.slot),
-    }))
+    })))
 
   return { ctx, semester, report, greedy, anneal: annealStats, entries, events: ctx.events.length }
 }

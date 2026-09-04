@@ -7,6 +7,7 @@ import { scheduleRouter } from './schedule.js'
 import { requestsRouter } from './requests.js'
 import { handoverRouter } from './handover.js'
 import { assistantRouter } from './assistant.js'
+import { workloadsRouter } from './workloads.js'
 import { requireRole } from '../auth/middleware.js'
 import { requireWrite, requireRead, scopeWhere as accessScopeWhere, scopeAssert as accessScopeAssert } from '../auth/access.js'
 import { hashPassword } from '../auth/password.js'
@@ -32,7 +33,7 @@ const resources = [
   { path: 'buildings', model: 'building', label: 'Bino', schema: schemas.building },
   { path: 'rooms', model: 'room', label: 'Xona', schema: schemas.room, include: { building: true } },
   { path: 'room-permissions', model: 'roomPermission', label: 'Xona ruxsati', schema: schemas.roomPermission, include: { room: true, teacher: true, group: true, specialty: true } },
-  { path: 'workloads', model: 'workload', label: 'Yuklama', schema: schemas.workload, include: { group: true, teacher: true, subject: true } },
+  // 'workloads' — bu yerda EMAS: guruh ko'p-ko'pga (potok), o'z marshruti bor (pastda)
   // Foydalanuvchilar: faqat Super Admin ko'radi va o'zgartiradi, parol hech qachon qaytarilmaydi
   { path: 'users', model: 'user', label: 'Foydalanuvchi', schema: schemas.user, sanitize: stripPassword, transform: userTransform },
 ]
@@ -59,6 +60,9 @@ export function buildRoutes() {
       }),
     )
   }
+
+  // Yuklama — ko'p guruhli (potok), alohida marshrut
+  router.use('/workloads', workloadsRouter())
 
   // Jadval optimallashtirish engine
   router.use('/schedule', scheduleRouter)

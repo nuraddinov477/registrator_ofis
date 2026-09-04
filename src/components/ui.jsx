@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Search, ChevronDown } from 'lucide-react'
+import { X, Search, ChevronDown, Check } from 'lucide-react'
 
 export function PageHeader({ title, subtitle, icon: Icon, count, action }) {
   return (
@@ -90,12 +90,14 @@ export function Modal({ open, onClose, title, children }) {
 
 // Qidiruvli tanlov — ro'yxat uzun bo'lganda (o'qituvchi, fan, guruh) oddiy
 // <select>'dan qulayroq: matn kiritib filtrlaydi, sichqoncha bilan tanlaydi.
-// options: [{ value, label }]
-export function SearchableSelect({ value, onChange, options, placeholder = 'Qidirish...' }) {
+// options: [{ value, label }]. `multi` — bir nechta tanlash (potok guruhlari kabi):
+// `value` massiv bo'ladi, tanlanganlar chip (✕ bilan) ko'rinadi, ro'yxat yopilmay turadi.
+export function SearchableSelect({ value, onChange, options, placeholder = 'Qidirish...', multi = false }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const ref = useRef(null)
-  const selected = options.find((o) => String(o.value) === String(value))
+  const selectedValues = multi ? (Array.isArray(value) ? value.map(String) : []) : null
+  const selected = !multi ? options.find((o) => String(o.value) === String(value)) : null
 
   useEffect(() => {
     const onClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
@@ -105,14 +107,38 @@ export function SearchableSelect({ value, onChange, options, placeholder = 'Qidi
 
   const filtered = options.filter((o) => o.label.toLowerCase().includes(q.toLowerCase()))
 
+  const toggle = (v) => {
+    const cur = Array.isArray(value) ? value : []
+    const has = cur.some((x) => String(x) === String(v))
+    onChange(has ? cur.filter((x) => String(x) !== String(v)) : [...cur, v])
+  }
+  const removeChip = (v) => onChange((Array.isArray(value) ? value : []).filter((x) => String(x) !== String(v)))
+
   return (
     <div className="relative" ref={ref}>
+      {multi && selectedValues.length > 0 && (
+        <div className="mb-1.5 flex flex-wrap gap-1.5">
+          {selectedValues.map((v) => {
+            const o = options.find((x) => String(x.value) === v)
+            return (
+              <span key={v} className="inline-flex items-center gap-1 rounded-md bg-brand/10 px-2 py-1 text-xs text-brand">
+                {o?.label ?? v}
+                <button type="button" onClick={() => removeChip(v)} className="hover:text-red-500"><X size={12} /></button>
+              </span>
+            )
+          })}
+        </div>
+      )}
       <button
         type="button"
         className="input flex items-center justify-between text-left"
         onClick={() => { setOpen((o) => !o); setQ('') }}
       >
-        <span className={`truncate ${selected ? '' : 'text-slate-400'}`}>{selected ? selected.label : '—'}</span>
+        {multi ? (
+          <span className="text-slate-400">{selectedValues.length ? `${selectedValues.length} ta tanlandi — qo'shish uchun bosing` : '—'}</span>
+        ) : (
+          <span className={`truncate ${selected ? '' : 'text-slate-400'}`}>{selected ? selected.label : '—'}</span>
+        )}
         <ChevronDown size={16} className="shrink-0 text-slate-400" />
       </button>
       {open && (
@@ -128,22 +154,28 @@ export function SearchableSelect({ value, onChange, options, placeholder = 'Qidi
             />
           </div>
           <div className="max-h-52 overflow-y-auto py-1">
-            <button
-              type="button"
-              className="block w-full px-3 py-1.5 text-left text-sm text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
-              onClick={() => { onChange(''); setOpen(false) }}
-            >—</button>
-            {filtered.length === 0 && <div className="px-3 py-2 text-sm text-slate-400">Topilmadi</div>}
-            {filtered.map((o) => (
+            {!multi && (
               <button
-                key={o.value}
                 type="button"
-                className={`block w-full truncate px-3 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 ${String(o.value) === String(value) ? 'bg-brand/10 text-brand' : ''}`}
-                onClick={() => { onChange(o.value); setOpen(false) }}
-              >
-                {o.label}
-              </button>
-            ))}
+                className="block w-full px-3 py-1.5 text-left text-sm text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                onClick={() => { onChange(''); setOpen(false) }}
+              >—</button>
+            )}
+            {filtered.length === 0 && <div className="px-3 py-2 text-sm text-slate-400">Topilmadi</div>}
+            {filtered.map((o) => {
+              const isSel = multi ? selectedValues.includes(String(o.value)) : String(o.value) === String(value)
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  className={`flex w-full items-center justify-between gap-2 truncate px-3 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 ${isSel ? 'bg-brand/10 text-brand' : ''}`}
+                  onClick={() => { if (multi) toggle(o.value); else { onChange(o.value); setOpen(false) } }}
+                >
+                  <span className="truncate">{o.label}</span>
+                  {multi && isSel && <Check size={14} className="shrink-0" />}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}

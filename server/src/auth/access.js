@@ -113,7 +113,7 @@ export function scopeWhere(resource, user) {
   if (role === OPERATOR) {
     const F = user?.facultyId ?? null
     if (resource === 'groups' || resource === 'specialties') return F ? { facultyId: F } : NONE
-    if (resource === 'workloads') return F ? { group: { facultyId: F } } : NONE
+    if (resource === 'workloads') return F ? { groups: { some: { group: { facultyId: F } } } } : NONE
     if (resource === 'users') return F ? { facultyId: F } : NONE
     return null // boshqa (reference) resurslarni o'qiy oladi
   }
@@ -210,9 +210,13 @@ export async function scopeAssert(resource, user, data, existing) {
       if (data) data.facultyId = F // o'z fakultetiga majburlash
     } else if (resource === 'workloads') {
       if (F == null) throw new AccessError('Sizga fakultet biriktirilmagan')
-      const gid = data?.groupId ?? existing?.groupId
-      const g = gid != null ? await prisma.group.findUnique({ where: { id: Number(gid) } }) : null
-      if (!g || g.facultyId !== F) throw new AccessError('Guruh sizning fakultetingizda emas')
+      // groupIds berilmagan (masalan faqat teacherId o'zgartirilayotgan PUT) — mavjudini tekshiramiz
+      const gids = data?.groupIds ?? existing?.groups?.map((x) => x.groupId) ?? []
+      if (!gids.length) throw new AccessError('Kamida bitta guruh tanlanishi kerak')
+      const groups = await prisma.group.findMany({ where: { id: { in: gids.map(Number) } } })
+      if (groups.length !== gids.length || groups.some((g) => g.facultyId !== F)) {
+        throw new AccessError('Guruh(lar) sizning fakultetingizda emas')
+      }
     }
     // subjects / rooms / room-permissions: umumiy (global), qamrov yo'q
     return data

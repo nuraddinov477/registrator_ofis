@@ -107,7 +107,7 @@ const listConfig = {
   subjects: { model: 'subject', map: (r) => ({ id: r.id, nom: r.name, kredit: r.credit, semestr: r.semester, qiyinlik: r.difficulty }) },
   groups: { model: 'group', include: { faculty: true, specialty: true }, map: (r) => ({ id: r.id, nom: r.name, kurs: r.course, talabalar: r.size, fakultet: r.faculty?.name ?? null }) },
   rooms: { model: 'room', include: { building: true }, map: (r) => ({ id: r.id, nom: r.name, sigim: r.capacity, turi: r.type, bino: r.building?.name ?? null }) },
-  workloads: { model: 'workload', include: { group: true, teacher: true, subject: true }, map: (r) => ({ id: r.id, guruh: r.group?.name, fan: r.subject?.name, oqituvchi: r.teacher?.fullName, soat: r.weeklyHours, semestr: r.semester }) },
+  workloads: { model: 'workload', include: { groups: { include: { group: true } }, teacher: true, subject: true }, map: (r) => ({ id: r.id, guruh: r.groups?.map((x) => x.group?.name).filter(Boolean).join(', '), fan: r.subject?.name, oqituvchi: r.teacher?.fullName, soat: r.weeklyHours, semestr: r.semester }) },
 }
 
 async function latestDoneRun() {

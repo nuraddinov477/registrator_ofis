@@ -106,7 +106,7 @@ model Group {
   facultyId       Int?
   specialty       Specialty?       @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
   specialtyId     Int? // direction_id
-  workloads       Workload[]
+  workloadGroups  WorkloadGroup[]
   roomPermissions RoomPermission[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
@@ -156,18 +156,28 @@ model RoomPermission {
 // ─────────────────────────── Ish yuklamasi (engine kirishi) ───────────────────────────
 
 model Workload {
-  id          Int      @id @default(autoincrement())
-  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  groupId     Int
-  teacher     Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  id          Int              @id @default(autoincrement())
+  groups      WorkloadGroup[]
+  teacher     Teacher          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   teacherId   Int
-  subject     Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subject     Subject          @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   subjectId   Int
-  // haftalik_soatlar = haftadagi juftliklar soni (engine shuncha "event" yaratadi)
-  weeklyHours Int      @default(2)
-  semester    Int      @default(1)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // haftalik_soatlar = haftadagi juftliklar soni (engine shuncha "event" yaratadi) — guruhlar
+  // soniga qaramasdan BIR MARTA sanaladi (potok — bir dars, bir nechta guruh birga tinglaydi)
+  weeklyHours Int              @default(2)
+  semester    Int              @default(1)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+// Yuklama ↔ guruh (ko'p-ko'pga) — potok: bitta dars bir nechta guruhga birga o'tiladi
+model WorkloadGroup {
+  workload   Workload @relation(fields: [workloadId], references: [id], onDelete: Cascade)
+  workloadId Int
+  group      Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId    Int
+
+  @@id([workloadId, groupId])
 }
 
 // ─────────────────────────── Jadval chiqishi (engine natijasi) ───────────────────────────

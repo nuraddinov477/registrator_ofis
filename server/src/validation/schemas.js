@@ -46,7 +46,11 @@ export const schemas = {
 
   roomPermission: z.object({ roomId: reqInt, teacherId: optInt, groupId: optInt, specialtyId: optInt }),
 
-  workload: z.object({ groupId: reqInt, teacherId: reqInt, subjectId: reqInt, weeklyHours: intDef(2), semester: intDef(1) }),
+  // groupIds — potok: bir dars bir nechta guruhga birga o'tilishi mumkin (kamida 1 ta)
+  workload: z.object({
+    groupIds: z.preprocess((v) => (Array.isArray(v) ? v : v == null ? [] : [v]), z.array(reqInt).min(1)),
+    teacherId: reqInt, subjectId: reqInt, weeklyHours: intDef(2), semester: intDef(1),
+  }),
 
   // password: yaratishda/parolni o'zgartirishda beriladi; bo'sh bo'lsa passwordHash tegilmaydi
   // facultyId/departmentId/teacherId: rol qamrovi — userni o'z birligiga biriktiradi

@@ -9,7 +9,7 @@ export async function loadData(prisma, semester = 1) {
   const [workloads, rooms] = await Promise.all([
     prisma.workload.findMany({
       where: { semester },
-      include: { group: true, teacher: true, subject: true },
+      include: { groups: { include: { group: true } }, teacher: true, subject: true },
     }),
     prisma.room.findMany({ include: { permissions: true } }),
   ])
@@ -29,10 +29,11 @@ export async function loadData(prisma, semester = 1) {
   const roomAllowed = (room, ev) => {
     if (room.capacity < ev.groupSize) return false // qattiq cheklash 5
     if (room.type === 'umumiy') return true // hamma foydalanishi mumkin
-    // maxsus: o'qituvchi / guruh / yo'nalish ruxsati (qattiq cheklash 6,7)
+    // maxsus: o'qituvchi / guruh(lar) / yo'nalish(lar) ruxsati (qattiq cheklash 6,7) —
+    // potokda tanlangan guruhlardan BIRIGA ruxsat bo'lsa yetarli
     return room.teachers.has(ev.teacherId)
-      || room.groups.has(ev.groupId)
-      || (ev.specialtyId != null && room.specialties.has(ev.specialtyId))
+      || ev.groupIds.some((gid) => room.groups.has(gid))
+      || ev.specialtyIds.some((sid) => room.specialties.has(sid))
   }
 
   const events = []
@@ -40,19 +41,23 @@ export async function loadData(prisma, semester = 1) {
   let eid = 0
 
   for (const w of workloads) {
+    // Potok: bitta yuklama bir nechta guruhga bog'langan bo'lishi mumkin —
+    // hammasi BIRGA bitta darsda ishtirok etadi (fan soati guruhlar soniga ko'paytirilmaydi)
+    const wgroups = w.groups.map((x) => x.group).filter(Boolean)
+    const groupIds = w.groups.map((x) => x.groupId)
     for (let i = 0; i < (w.weeklyHours || 1); i++) {
       const ev = {
         id: eid++,
         workloadId: w.id,
-        groupId: w.groupId,
+        groupIds,
         teacherId: w.teacherId,
         subjectId: w.subjectId,
-        groupName: w.group?.name,
+        groupNames: wgroups.map((g) => g.name),
         teacherName: w.teacher?.fullName,
         subjectName: w.subject?.name,
-        course: w.group?.course ?? 1,
-        groupSize: w.group?.size ?? 25,
-        specialtyId: w.group?.specialtyId ?? null,
+        course: wgroups[0]?.course ?? 1,
+        groupSize: wgroups.reduce((s, g) => s + (g.size ?? 0), 0), // barcha guruh talabalari yig'indisi
+        specialtyIds: [...new Set(wgroups.map((g) => g.specialtyId).filter((v) => v != null))],
         difficulty: w.subject?.difficulty ?? 3,
         slot: -1,
         room: -1,
@@ -64,13 +69,17 @@ export async function loadData(prisma, semester = 1) {
     }
   }
 
-  // Indekslar — delta-baholash uchun (guruh/o'qituvchi bo'yicha eventlar)
+  // Indekslar — delta-baholash uchun (guruh/o'qituvchi bo'yicha eventlar). Potok event'i
+  // HAR BIR o'ziga tegishli guruh ro'yxatiga qo'shiladi — shu bilan groupCost/anneal
+  // barcha guruhlarga birdek ta'sirini avtomatik hisoblaydi.
   const byGroup = new Map(), byTeacher = new Map()
   for (const ev of events) {
-    if (!byGroup.has(ev.groupId)) byGroup.set(ev.groupId, [])
     if (!byTeacher.has(ev.teacherId)) byTeacher.set(ev.teacherId, [])
-    byGroup.get(ev.groupId).push(ev)
     byTeacher.get(ev.teacherId).push(ev)
+    for (const gid of ev.groupIds) {
+      if (!byGroup.has(gid)) byGroup.set(gid, [])
+      byGroup.get(gid).push(ev)
+    }
   }
 
   return { events, byGroup, byTeacher, rooms: roomMeta, infeasible, semester }

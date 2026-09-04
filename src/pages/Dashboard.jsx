@@ -69,7 +69,7 @@ export default function Dashboard() {
     const deptIds = new Set(departments.filter((d) => d.facultyId === f.id).map((d) => d.id))
     const teacherCount = teachers.filter((t) => deptIds.has(t.departmentId)).length
     const groupCount = groups.filter((g) => g.facultyId === f.id).length
-    const loadCount = loads.filter((l) => groupFacultyId.get(l.groupId) === f.id).length
+    const loadCount = loads.filter((l) => l.groups?.some((x) => groupFacultyId.get(x.groupId) === f.id)).length
     const specCount = specialties.filter((s) => s.facultyId === f.id).length
     const studentCount = groups.filter((g) => g.facultyId === f.id).reduce((sum, g) => sum + (g.size || 0), 0)
     return {

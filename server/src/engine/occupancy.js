@@ -34,13 +34,13 @@ export class Occupancy {
   }
 
   place(ev) {
-    this._inc(this.group, ev.groupId, ev.slot)
+    for (const gid of ev.groupIds) this._inc(this.group, gid, ev.slot)
     this._inc(this.teacher, ev.teacherId, ev.slot)
     this._inc(this.room, ev.room, ev.slot)
   }
 
   remove(ev) {
-    this._dec(this.group, ev.groupId, ev.slot)
+    for (const gid of ev.groupIds) this._dec(this.group, gid, ev.slot)
     this._dec(this.teacher, ev.teacherId, ev.slot)
     this._dec(this.room, ev.room, ev.slot)
   }
@@ -50,9 +50,10 @@ export class Occupancy {
   teacherFree(teacherId, slot) { return (this.teacher.get(teacherId)?.[slot] ?? 0) === 0 }
   roomFree(roomId, slot) { return (this.room.get(roomId)?.[slot] ?? 0) === 0 }
 
-  // (slot, room) ga qo'yilsa nechta yangi konflikt qo'shiladi (event hozir joyda EMAS)
+  // (slot, room) ga qo'yilsa nechta yangi konflikt qo'shiladi (event hozir joyda EMAS).
+  // Potok: har band guruh alohida konflikt hisoblanadi (nechta guruh to'qnashsa shuncha).
   conflictsIfPlaced(ev, slot, room) {
-    return (this.groupFree(ev.groupId, slot) ? 0 : 1)
+    return ev.groupIds.reduce((s, gid) => s + (this.groupFree(gid, slot) ? 0 : 1), 0)
       + (this.teacherFree(ev.teacherId, slot) ? 0 : 1)
       + (this.roomFree(room, slot) ? 0 : 1)
   }

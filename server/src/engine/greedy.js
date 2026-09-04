@@ -18,8 +18,9 @@ export function greedyConstruct(ctx) {
     let best = null // { slot, room, conflicts }
 
     for (const slot of ev.slots) {
-      // guruh va o'qituvchi shu slotda band bo'lsa — bu slot foydasiz, o'tkazib yuboramiz
-      const baseBusy = (occ.groupFree(ev.groupId, slot) ? 0 : 1) + (occ.teacherFree(ev.teacherId, slot) ? 0 : 1)
+      // guruh(lar) va o'qituvchi shu slotda band bo'lsa — bu slot foydasiz, o'tkazib yuboramiz
+      const baseBusy = ev.groupIds.reduce((s, gid) => s + (occ.groupFree(gid, slot) ? 0 : 1), 0)
+        + (occ.teacherFree(ev.teacherId, slot) ? 0 : 1)
       if (baseBusy === 0) {
         // bo'sh xona qidiramiz; topilsa — konfliktsiz joylashuv
         const room = ev.rooms.find((r) => occ.roomFree(r, slot))

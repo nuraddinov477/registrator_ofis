@@ -22,7 +22,7 @@ export function Loads() {
   const writable = canWrite('loads')
 
   const openAdd = () => { setEditing(null); setForm({}); setErr(''); setOpen(true) }
-  const openEdit = (l) => { setEditing(l); setForm({ teacherId: l.teacherId, subjectId: l.subjectId, groupId: l.groupId, semester: l.semester, weeklyHours: l.weeklyHours }); setErr(''); setOpen(true) }
+  const openEdit = (l) => { setEditing(l); setForm({ teacherId: l.teacherId, subjectId: l.subjectId, groupIds: l.groups?.map((x) => x.groupId) || [], semester: l.semester, weeklyHours: l.weeklyHours }); setErr(''); setOpen(true) }
   const save = async (e) => {
     e.preventDefault()
     setErr('')
@@ -56,15 +56,17 @@ export function Loads() {
         rows={loads.filter((l) => Object.values(l).join(' ').toLowerCase().includes(q.toLowerCase()))}
         empty="Maʼlumot topilmadi"
         renderRow={(l) => {
-          // Fan soati — shu yuklamaning o'zida (weeklyHours); Reyting — guruh talabalar soni × 0.8
-          const g = groups.find((x) => x.id === Number(l.groupId))
-          const rating = g ? Math.round(g.size * 0.8 * 10) / 10 : null
+          // Fan soati — shu yuklamaning o'zida (weeklyHours, guruhlar soniga qaramasdan BIR MARTA);
+          // Reyting — potokdagi BARCHA guruhlar talabalari YIG'INDISI × 0.8
+          const lgroups = l.groups || []
+          const totalStudents = lgroups.reduce((s, x) => s + (x.group?.size || 0), 0)
+          const rating = lgroups.length ? Math.round(totalStudents * 0.8 * 10) / 10 : null
           const total = Math.round(((l.weeklyHours || 0) + (rating || 0)) * 10) / 10
           return (
           <tr key={l.id} className="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
             <td className="px-4 py-3">{nm('teachers', l.teacherId)}</td>
             <td className="px-4 py-3">{nm('subjects', l.subjectId)}</td>
-            <td className="px-4 py-3">{nm('groups', l.groupId)}</td>
+            <td className="px-4 py-3">{lgroups.map((x) => x.group?.name).filter(Boolean).join(', ') || '—'}</td>
             <td className="px-4 py-3">{l.semester}</td>
             <td className="px-4 py-3">{l.weeklyHours ?? '—'}</td>
             <td className="px-4 py-3">{rating ?? '—'}</td>
@@ -92,13 +94,13 @@ export function Loads() {
             <SearchableSelect value={form.subjectId || ''} onChange={(v) => setForm({ ...form, subjectId: v })}
               options={subjects.map((s) => ({ value: s.id, label: s.name }))} placeholder="Fan qidirish..." />
           </Field>
-          <Field label="Guruh">
-            <SearchableSelect value={form.groupId || ''} onChange={(v) => setForm({ ...form, groupId: v })}
+          <Field label="Guruh(lar) — potok uchun bir nechtasini tanlash mumkin">
+            <SearchableSelect multi value={form.groupIds || []} onChange={(v) => setForm({ ...form, groupIds: v })}
               options={groups.map((g) => ({ value: g.id, label: g.name }))} placeholder="Guruh qidirish..." />
           </Field>
           <Field label="Semestr"><input className="input" type="number" value={form.semester || ''} onChange={(e) => setForm({ ...form, semester: e.target.value })} /></Field>
           <Field label="Fan soati (haftalik)"><input className="input" type="number" value={form.weeklyHours ?? ''} onChange={(e) => setForm({ ...form, weeklyHours: e.target.value })} /></Field>
-          <p className="text-xs text-slate-400">Reyting guruh talabalar sonidan avtomatik hisoblanadi (talabalar × 0.8).</p>
+          <p className="text-xs text-slate-400">Fan soati guruhlar soniga ko'paytirilmaydi (bir dars, birga o'tiladi). Reyting — tanlangan barcha guruhlar talabalari yig'indisidan avtomatik hisoblanadi (× 0.8).</p>
           {err && <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">{err}</div>}
           <div className="flex justify-end gap-2 pt-2"><button type="button" className="btn-ghost" onClick={() => setOpen(false)}>Bekor</button><button type="submit" className="btn-primary">Saqlash</button></div>
         </form>

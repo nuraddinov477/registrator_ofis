@@ -40,7 +40,7 @@ export function handoverRouter() {
     const id = Number(req.params.id)
     const teacher = await prisma.teacher.findUnique({
       where: { id },
-      include: { department: true, workloads: { include: { group: true, subject: true } } },
+      include: { department: true, workloads: { include: { groups: { include: { group: true } }, subject: true } } },
     })
     if (!teacher || !inScope(req.user, teacher)) return res.status(404).json({ error: "O'qituvchi topilmadi" })
 
@@ -54,7 +54,7 @@ export function handoverRouter() {
       })
       return {
         id: w.id,
-        group: w.group?.name,
+        group: w.groups?.map((x) => x.group?.name).filter(Boolean).join(', '),
         subject: w.subject?.name,
         subjectId: w.subjectId,
         weeklyHours: w.weeklyHours,

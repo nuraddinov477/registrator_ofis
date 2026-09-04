@@ -39,9 +39,11 @@ export function anneal(ctx, occ, opts = {}) {
     const ev = ctx.events[randInt(n)]
     if (ev.rooms.length === 0) continue
 
-    const g = ctx.byGroup.get(ev.groupId)
+    // Potok: shu event bir nechta guruhga tegishli bo'lishi mumkin — ko'chirilsa
+    // BARCHA shu guruhlarning narxi bir vaqtda o'zgaradi, hammasi yig'indiga qo'shiladi
+    const groupLists = ev.groupIds.map((gid) => ctx.byGroup.get(gid))
     const t = ctx.byTeacher.get(ev.teacherId)
-    const oldLocal = groupCost(g) + teacherCost(t)
+    const oldLocal = groupLists.reduce((s, g) => s + groupCost(g), 0) + teacherCost(t)
     const oldHard = occ.hard
     const oldSlot = ev.slot, oldRoom = ev.room
 
@@ -51,7 +53,7 @@ export function anneal(ctx, occ, opts = {}) {
     ev.room = ev.rooms[randInt(ev.rooms.length)]
     occ.place(ev)
 
-    const newLocal = groupCost(g) + teacherCost(t)
+    const newLocal = groupLists.reduce((s, g) => s + groupCost(g), 0) + teacherCost(t)
     const deltaSoft = newLocal - oldLocal
     const delta = (occ.hard - oldHard) * hardWeight + deltaSoft
 
