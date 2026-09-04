@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, X } from 'lucide-react'
 import { db, useCollection } from '../data/store'
 import { canWrite } from '../lib/access'
 import { SearchBar, Table, Modal, Field, Badge } from '../components/ui'
@@ -19,6 +19,7 @@ export default function Rooms() {
   const [fBuilding, setFBuilding] = useState('') // xona filtri: bino
   const [fType, setFType] = useState('')          // xona filtri: turi
   const [fCap, setFCap] = useState('')            // xona filtri: minimal sig'im
+  const [customFeature, setCustomFeature] = useState('') // ro'yxatda yo'q xususiyat uchun qo'lda kiritish
 
   const isB = tab === 'buildings'
   const coll = isB ? 'buildings' : 'rooms'
@@ -32,8 +33,8 @@ export default function Rooms() {
     return true
   })
 
-  const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '' } : { name: '', buildingId: '', capacity: 30, kind: 'Maʼruza', features: [] }); setOpen(true) }
-  const openEdit = (r) => { setEditing(r); setForm(isB ? r : { ...r, features: parseFeatures(r) }); setOpen(true) }
+  const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '' } : { name: '', buildingId: '', capacity: 30, kind: 'Maʼruza', features: [] }); setCustomFeature(''); setOpen(true) }
+  const openEdit = (r) => { setEditing(r); setForm(isB ? r : { ...r, features: parseFeatures(r) }); setCustomFeature(''); setOpen(true) }
   const save = (e) => {
     e.preventDefault()
     const p = { ...form }
@@ -45,6 +46,14 @@ export default function Rooms() {
   const toggleFeature = (f) => {
     const cur = form.features || []
     setForm({ ...form, features: cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f] })
+  }
+  // Ro'yxatda mos xususiyat topilmasa — mas'ul xodim o'zi qo'lda kiritadi
+  const addCustomFeature = () => {
+    const v = customFeature.trim()
+    if (!v) return
+    const cur = form.features || []
+    if (!cur.includes(v)) setForm({ ...form, features: [...cur, v] })
+    setCustomFeature('')
   }
   const bName = (id) => buildings.find((b) => b.id === id)?.name || '—'
 
@@ -127,16 +136,38 @@ export default function Rooms() {
             <Field label="Sigʻim"><input className="input" type="number" value={form.capacity || 0} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></Field>
             <Field label="Turi"><select className="input" value={form.kind || ''} onChange={(e) => setForm({ ...form, kind: e.target.value })}>{['Maʼruza', 'Amaliy', 'Laboratoriya', 'Kompyuter'].map((v) => <option key={v}>{v}</option>)}</select></Field>
             <Field label="Xususiyatlar">
-              <div className="flex flex-wrap gap-2">
-                {ROOM_FEATURES.map((f) => {
-                  const checked = (form.features || []).includes(f)
-                  return (
-                    <label key={f} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition ${checked ? 'border-brand bg-brand/10 text-brand' : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}>
-                      <input type="checkbox" className="h-3.5 w-3.5 rounded" checked={checked} onChange={() => toggleFeature(f)} />
-                      {f}
-                    </label>
-                  )
-                })}
+              <div className="space-y-2.5">
+                <div className="flex flex-wrap gap-2">
+                  {ROOM_FEATURES.map((f) => {
+                    const checked = (form.features || []).includes(f)
+                    return (
+                      <label key={f} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition ${checked ? 'border-brand bg-brand/10 text-brand' : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}>
+                        <input type="checkbox" className="h-3.5 w-3.5 rounded" checked={checked} onChange={() => toggleFeature(f)} />
+                        {f}
+                      </label>
+                    )
+                  })}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    className="input flex-1"
+                    placeholder="Mos xususiyat topilmasa, shu yerga yozing..."
+                    value={customFeature}
+                    onChange={(e) => setCustomFeature(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomFeature() } }}
+                  />
+                  <button type="button" className="btn-ghost shrink-0" onClick={addCustomFeature}>Qo'shish</button>
+                </div>
+                {(form.features || []).some((f) => !ROOM_FEATURES.includes(f)) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(form.features || []).filter((f) => !ROOM_FEATURES.includes(f)).map((f) => (
+                      <span key={f} className="inline-flex items-center gap-1 rounded-md bg-brand/10 px-2 py-1 text-xs text-brand">
+                        {f}
+                        <button type="button" onClick={() => toggleFeature(f)} className="hover:text-red-500"><X size={12} /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </Field>
           </>}
