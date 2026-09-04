@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { X, Search } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { X, Search, ChevronDown } from 'lucide-react'
 
 export function PageHeader({ title, subtitle, icon: Icon, count, action }) {
   return (
@@ -84,6 +84,69 @@ export function Modal({ open, onClose, title, children }) {
         </div>
         {children}
       </div>
+    </div>
+  )
+}
+
+// Qidiruvli tanlov — ro'yxat uzun bo'lganda (o'qituvchi, fan, guruh) oddiy
+// <select>'dan qulayroq: matn kiritib filtrlaydi, sichqoncha bilan tanlaydi.
+// options: [{ value, label }]
+export function SearchableSelect({ value, onChange, options, placeholder = 'Qidirish...' }) {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const ref = useRef(null)
+  const selected = options.find((o) => String(o.value) === String(value))
+
+  useEffect(() => {
+    const onClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
+
+  const filtered = options.filter((o) => o.label.toLowerCase().includes(q.toLowerCase()))
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        className="input flex items-center justify-between text-left"
+        onClick={() => { setOpen((o) => !o); setQ('') }}
+      >
+        <span className={`truncate ${selected ? '' : 'text-slate-400'}`}>{selected ? selected.label : '—'}</span>
+        <ChevronDown size={16} className="shrink-0 text-slate-400" />
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800">
+          <div className="relative p-1.5">
+            <Search size={14} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              autoFocus
+              className="input py-1.5 pl-8 text-sm"
+              placeholder={placeholder}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <div className="max-h-52 overflow-y-auto py-1">
+            <button
+              type="button"
+              className="block w-full px-3 py-1.5 text-left text-sm text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+              onClick={() => { onChange(''); setOpen(false) }}
+            >—</button>
+            {filtered.length === 0 && <div className="px-3 py-2 text-sm text-slate-400">Topilmadi</div>}
+            {filtered.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                className={`block w-full truncate px-3 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 ${String(o.value) === String(value) ? 'bg-brand/10 text-brand' : ''}`}
+                onClick={() => { onChange(o.value); setOpen(false) }}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -3,7 +3,7 @@ import { BookOpen, FileText, UserCog, ShieldCheck, Plus, Pencil, Trash2 } from '
 import { db, useCollection } from '../data/store'
 import { api, auth } from '../api/client'
 import { canWrite, assignableRoles, writableSections, visibleSections, SECTION_LABELS } from '../lib/access'
-import { PageHeader, SearchBar, Table, Modal, Field, Badge } from '../components/ui'
+import { PageHeader, SearchBar, Table, Modal, Field, Badge, SearchableSelect } from '../components/ui'
 
 /* ---------- O'quv yuklamasi ---------- */
 export function Loads() {
@@ -78,9 +78,18 @@ export function Loads() {
       />
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Yuklamani tahrirlash' : "Yuklama qo'shish"}>
         <form onSubmit={save} className="space-y-4">
-          <Field label="Oʻqituvchi"><select className="input" value={form.teacherId || ''} onChange={(e) => setForm({ ...form, teacherId: e.target.value })}><option value="">—</option>{teachers.map((t) => <option key={t.id} value={t.id}>{t.fullName}</option>)}</select></Field>
-          <Field label="Fan"><select className="input" value={form.subjectId || ''} onChange={(e) => setForm({ ...form, subjectId: e.target.value })}><option value="">—</option>{subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
-          <Field label="Guruh"><select className="input" value={form.groupId || ''} onChange={(e) => setForm({ ...form, groupId: e.target.value })}><option value="">—</option>{groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select></Field>
+          <Field label="Oʻqituvchi">
+            <SearchableSelect value={form.teacherId || ''} onChange={(v) => setForm({ ...form, teacherId: v })}
+              options={teachers.map((t) => ({ value: t.id, label: t.fullName }))} placeholder="O'qituvchi qidirish..." />
+          </Field>
+          <Field label="Fan">
+            <SearchableSelect value={form.subjectId || ''} onChange={(v) => setForm({ ...form, subjectId: v })}
+              options={subjects.map((s) => ({ value: s.id, label: s.name }))} placeholder="Fan qidirish..." />
+          </Field>
+          <Field label="Guruh">
+            <SearchableSelect value={form.groupId || ''} onChange={(v) => setForm({ ...form, groupId: v })}
+              options={groups.map((g) => ({ value: g.id, label: g.name }))} placeholder="Guruh qidirish..." />
+          </Field>
           <Field label="Semestr"><input className="input" type="number" value={form.semester || ''} onChange={(e) => setForm({ ...form, semester: e.target.value })} /></Field>
           <Field label="Fan soati (haftalik)"><input className="input" type="number" value={form.weeklyHours ?? ''} onChange={(e) => setForm({ ...form, weeklyHours: e.target.value })} /></Field>
           <p className="text-xs text-slate-400">Reyting guruh talabalar sonidan avtomatik hisoblanadi (talabalar × 0.8).</p>
