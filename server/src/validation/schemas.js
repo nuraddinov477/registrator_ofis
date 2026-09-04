@@ -36,6 +36,11 @@ export const schemas = {
     capacity: intDef(30),
     type: z.preprocess((v) => (v === '' || v == null ? 'umumiy' : v), z.enum(['umumiy', 'maxsus'])),
     kind: optStr,
+    // Jihoz/xususiyatlar — massiv kelsa JSON-string'ga o'giriladi (User.restrictions bilan bir xil naqsh)
+    features: z.preprocess(
+      (v) => (v == null || v === '' ? null : (typeof v === 'string' ? v : JSON.stringify(v))),
+      z.string().nullable(),
+    ),
     buildingId: optInt,
   }),
 

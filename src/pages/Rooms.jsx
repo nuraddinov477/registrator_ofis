@@ -4,6 +4,10 @@ import { db, useCollection } from '../data/store'
 import { canWrite } from '../lib/access'
 import { SearchBar, Table, Modal, Field, Badge } from '../components/ui'
 
+// Xona jihoz/xususiyatlari — belgilash mumkin bo'lgan sobit ro'yxat
+const ROOM_FEATURES = ['Proyektor', 'Konditsioner', 'Interaktiv doska', 'Kompyuterlar', 'Ovoz tizimi', 'Internet (Wi-Fi)']
+const parseFeatures = (r) => { try { return JSON.parse(r?.features || '[]') } catch { return [] } }
+
 export default function Rooms() {
   const buildings = useCollection('buildings')
   const rooms = useCollection('rooms')
@@ -19,24 +23,28 @@ export default function Rooms() {
   const isB = tab === 'buildings'
   const coll = isB ? 'buildings' : 'rooms'
   const writable = canWrite(coll)
-  const roomTypes = [...new Set(rooms.map((r) => r.type).filter(Boolean))]
+  const roomTypes = [...new Set(rooms.map((r) => r.kind).filter(Boolean))]
   const list = (isB ? buildings : rooms).filter((r) => {
     if (q && !Object.values(r).join(' ').toLowerCase().includes(q.toLowerCase())) return false
     if (!isB && fBuilding && Number(r.buildingId) !== Number(fBuilding)) return false
-    if (!isB && fType && r.type !== fType) return false
+    if (!isB && fType && r.kind !== fType) return false
     if (!isB && fCap && Number(r.capacity) < Number(fCap)) return false
     return true
   })
 
-  const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '' } : { name: '', buildingId: '', capacity: 30, type: 'Maʼruza' }); setOpen(true) }
-  const openEdit = (r) => { setEditing(r); setForm(r); setOpen(true) }
+  const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '' } : { name: '', buildingId: '', capacity: 30, kind: 'Maʼruza', features: [] }); setOpen(true) }
+  const openEdit = (r) => { setEditing(r); setForm(isB ? r : { ...r, features: parseFeatures(r) }); setOpen(true) }
   const save = (e) => {
     e.preventDefault()
     const p = { ...form }
     if (isB) p.floors = Number(p.floors) || 1
-    else { p.capacity = Number(p.capacity) || 0; p.buildingId = Number(p.buildingId) || '' }
+    else { p.capacity = Number(p.capacity) || 0; p.buildingId = Number(p.buildingId) || ''; p.features = JSON.stringify(p.features || []) }
     editing ? db.update(coll, editing.id, p) : db.add(coll, p)
     setOpen(false)
+  }
+  const toggleFeature = (f) => {
+    const cur = form.features || []
+    setForm({ ...form, features: cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f] })
   }
   const bName = (id) => buildings.find((b) => b.id === id)?.name || '—'
 
@@ -76,7 +84,7 @@ export default function Rooms() {
       )}
 
       <Table
-        columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi']), ...(writable ? ['Amallar'] : [])]}
+        columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Xususiyatlar']), ...(writable ? ['Amallar'] : [])]}
         rows={list}
         renderRow={(r) => (
           <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/30">
@@ -87,7 +95,14 @@ export default function Rooms() {
             </> : <>
               <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{bName(r.buildingId)}</td>
               <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.capacity}</td>
-              <td className="px-4 py-3"><Badge>{r.type}</Badge></td>
+              <td className="px-4 py-3">{r.kind ? <Badge>{r.kind}</Badge> : <span className="text-slate-400">—</span>}</td>
+              <td className="px-4 py-3">
+                <div className="flex flex-wrap gap-1">
+                  {parseFeatures(r).length
+                    ? parseFeatures(r).map((f) => <Badge key={f} color="gray">{f}</Badge>)
+                    : <span className="text-slate-400">—</span>}
+                </div>
+              </td>
             </>}
             {writable && (
               <td className="px-4 py-3">
@@ -110,7 +125,20 @@ export default function Rooms() {
           </> : <>
             <Field label="Bino"><select className="input" value={form.buildingId || ''} onChange={(e) => setForm({ ...form, buildingId: e.target.value })}><option value="">—</option>{buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
             <Field label="Sigʻim"><input className="input" type="number" value={form.capacity || 0} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></Field>
-            <Field label="Turi"><select className="input" value={form.type || ''} onChange={(e) => setForm({ ...form, type: e.target.value })}>{['Maʼruza', 'Amaliy', 'Laboratoriya', 'Kompyuter'].map((v) => <option key={v}>{v}</option>)}</select></Field>
+            <Field label="Turi"><select className="input" value={form.kind || ''} onChange={(e) => setForm({ ...form, kind: e.target.value })}>{['Maʼruza', 'Amaliy', 'Laboratoriya', 'Kompyuter'].map((v) => <option key={v}>{v}</option>)}</select></Field>
+            <Field label="Xususiyatlar">
+              <div className="flex flex-wrap gap-2">
+                {ROOM_FEATURES.map((f) => {
+                  const checked = (form.features || []).includes(f)
+                  return (
+                    <label key={f} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition ${checked ? 'border-brand bg-brand/10 text-brand' : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}>
+                      <input type="checkbox" className="h-3.5 w-3.5 rounded" checked={checked} onChange={() => toggleFeature(f)} />
+                      {f}
+                    </label>
+                  )
+                })}
+              </div>
+            </Field>
           </>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>Bekor</button>

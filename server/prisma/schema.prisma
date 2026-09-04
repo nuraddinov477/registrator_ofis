@@ -129,6 +129,8 @@ model Room {
   // Topshiriq 6: "umumiy" (hamma) | "maxsus" (faqat ruxsat bilan)
   type        String           @default("umumiy")
   kind        String? // Ma'ruza / Amaliy / Laboratoriya / Kompyuter
+  // Jihoz/xususiyatlar — JSON-string massiv, masalan '["Proyektor","Konditsioner"]'
+  features    String?
   building    Building?        @relation(fields: [buildingId], references: [id], onDelete: SetNull)
   buildingId  Int?
   permissions RoomPermission[]
