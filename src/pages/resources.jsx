@@ -113,6 +113,9 @@ export function Subjects() {
   )
 }
 
+const courseOptions = () => [1, 2, 3, 4, 5].map((c) => ({ value: c, label: `${c}-kurs` }))
+const formOptions = () => ['Kunduzgi', 'Sirtqi', 'Kechki'].map((v) => ({ value: v, label: v }))
+
 export function Groups() {
   return (
     <CrudPage
@@ -124,6 +127,12 @@ export function Groups() {
         { name: 'course', label: 'Kurs', type: 'number', default: 1 },
         { name: 'size', label: 'Talabalar soni', type: 'number', default: 25 },
         { name: 'form', label: "Ta'lim shakli", type: 'select', options: () => ['Kunduzgi', 'Sirtqi', 'Kechki'].map((v) => ({ value: v, label: v })) },
+      ]}
+      // Fakultet/Kurs/Ta'lim shakli bo'yicha filtrlab, hammasi qo'shilganini tekshirish uchun
+      filters={[
+        { name: 'facultyId', label: 'Barcha fakultetlar', options: facultyOptions },
+        { name: 'course', label: 'Barcha kurslar', options: courseOptions },
+        { name: 'form', label: 'Barcha shakllar', options: formOptions },
       ]}
       renderCells={(r) => <>{cell(<span className="font-medium">{r.name}</span>)}{cell(facultyName(r.facultyId))}{cell(`${r.course}-kurs`)}{cell(r.size)}{cell(r.form)}</>}
     />

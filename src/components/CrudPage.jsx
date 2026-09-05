@@ -7,20 +7,31 @@ import { PageHeader, SearchBar, Table, Modal, Field, DataState } from './ui'
 const empty = (fields) => Object.fromEntries(fields.map((f) => [f.name, f.default ?? '']))
 
 // extraActions(row) — amallar katagiga qo'shimcha tugmalar (masalan, almashtirish ustasi)
-export default function CrudPage({ title, subtitle, icon, collection, fields, columns, renderCells, extraActions }) {
+// filters — [{ name, label, options: () => [{value,label}] }] — hammasi to'ldirilganini
+// tekshirish uchun (masalan fakultet/kurs bo'yicha filtrlab sonini ko'rish)
+export default function CrudPage({ title, subtitle, icon, collection, fields, columns, renderCells, extraActions, filters }) {
   const rows = useCollection(collection)
   const loading = useIsLoading(collection)
   const failed = useLoadFailed(collection)
   const writable = canWrite(collection)
   const [q, setQ] = useState('')
+  const [fv, setFv] = useState({}) // filtr qiymatlari: { [filterName]: value }
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(empty(fields))
   const [err, setErr] = useState('')
 
-  const filtered = rows.filter((r) =>
-    Object.values(r).join(' ').toLowerCase().includes(q.toLowerCase())
-  )
+  const filtered = rows.filter((r) => {
+    if (q && !Object.values(r).join(' ').toLowerCase().includes(q.toLowerCase())) return false
+    if (filters) {
+      for (const f of filters) {
+        const v = fv[f.name]
+        if (v !== undefined && v !== '' && String(r[f.name]) !== String(v)) return false
+      }
+    }
+    return true
+  })
+  const filtersActive = filters && Object.values(fv).some((v) => v !== undefined && v !== '')
 
   const openAdd = () => { setEditing(null); setForm(empty(fields)); setErr(''); setOpen(true) }
   const openEdit = (row) => { setEditing(row); setForm(row); setErr(''); setOpen(true) }
@@ -47,6 +58,25 @@ export default function CrudPage({ title, subtitle, icon, collection, fields, co
         action={writable ? <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Qo'shish</button> : null}
       />
       <SearchBar value={q} onChange={setQ} />
+      {filters && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {filters.map((f) => (
+            <select
+              key={f.name}
+              className="input h-9 w-auto py-1"
+              value={fv[f.name] ?? ''}
+              onChange={(e) => setFv({ ...fv, [f.name]: e.target.value })}
+            >
+              <option value="">{f.label}</option>
+              {f.options().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          ))}
+          {filtersActive && (
+            <button className="text-sm text-slate-500 hover:text-brand" onClick={() => setFv({})}>Tozalash</button>
+          )}
+          <span className="text-xs text-slate-400">{filtered.length} ta natija</span>
+        </div>
+      )}
       {(loading || failed) && rows.length === 0 ? (
         <DataState loading={loading} onRetry={() => retry(collection)} />
       ) : (
