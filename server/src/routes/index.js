@@ -30,7 +30,7 @@ const resources = [
   { path: 'teachers', model: 'teacher', label: "O'qituvchi", schema: schemas.teacher, include: { department: true } },
   { path: 'subjects', model: 'subject', label: 'Fan', schema: schemas.subject },
   { path: 'groups', model: 'group', label: 'Guruh', schema: schemas.group, include: { faculty: true, specialty: true } },
-  { path: 'buildings', model: 'building', label: 'Bino', schema: schemas.building },
+  { path: 'buildings', model: 'building', label: 'Bino', schema: schemas.building, include: { faculty: true } },
   { path: 'rooms', model: 'room', label: 'Xona', schema: schemas.room, include: { building: true } },
   { path: 'room-permissions', model: 'roomPermission', label: 'Xona ruxsati', schema: schemas.roomPermission, include: { room: true, teacher: true, group: true, specialty: true } },
   // 'workloads' — bu yerda EMAS: guruh ko'p-ko'pga (potok), o'z marshruti bor (pastda)

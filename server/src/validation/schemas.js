@@ -29,7 +29,7 @@ export const schemas = {
 
   group: z.object({ name, course: intDef(1), size: intDef(25), form: optStr, facultyId: optInt, specialtyId: optInt }),
 
-  building: z.object({ name, floors: intDef(1), address: optStr }),
+  building: z.object({ name, floors: intDef(1), address: optStr, facultyId: optInt }),
 
   room: z.object({
     name,

@@ -12,6 +12,7 @@ const parseFeatures = (r) => { try { return JSON.parse(r?.features || '[]') } ca
 export default function Rooms() {
   const buildings = useCollection('buildings')
   const rooms = useCollection('rooms')
+  const faculties = useCollection('faculties')
   const [tab, setTab] = useState('buildings')
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
@@ -60,6 +61,7 @@ export default function Rooms() {
     setCustomFeature('')
   }
   const bName = (id) => buildings.find((b) => b.id === id)?.name || '—'
+  const facName = (id) => faculties.find((f) => f.id === id)?.name || '—'
 
   const TabBtn = ({ id, children }) => (
     <button onClick={() => setTab(id)} className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${tab === id ? 'bg-brand text-white' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{children}</button>
@@ -100,7 +102,7 @@ export default function Rooms() {
         <DataState loading={loading} onRetry={() => retry(coll)} />
       ) : (
       <Table
-        columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Kirish', 'Xususiyatlar']), ...(writable ? ['Amallar'] : [])]}
+        columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil', 'Fakultet'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Kirish', 'Xususiyatlar']), ...(writable ? ['Amallar'] : [])]}
         rows={list}
         renderRow={(r) => (
           <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/30">
@@ -108,6 +110,9 @@ export default function Rooms() {
             {isB ? <>
               <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.floors}</td>
               <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.address || '—'}</td>
+              <td className="px-4 py-3">
+                {r.facultyId ? <Badge color="blue">{facName(r.facultyId)}</Badge> : <Badge color="gray">Asosiy (umumiy)</Badge>}
+              </td>
             </> : <>
               <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{bName(r.buildingId)}</td>
               <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.capacity}</td>
@@ -145,6 +150,13 @@ export default function Rooms() {
           {isB ? <>
             <Field label="Qavatlar"><input className="input" type="number" value={form.floors || 1} onChange={(e) => setForm({ ...form, floors: e.target.value })} /></Field>
             <Field label="Manzil"><input className="input" value={form.address || ''} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
+            <Field label="Fakultet">
+              <select className="input" value={form.facultyId || ''} onChange={(e) => setForm({ ...form, facultyId: e.target.value })}>
+                <option value="">Asosiy — hamma fakultet foydalanadi</option>
+                {faculties.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            </Field>
+            <p className="text-xs text-slate-400">Fakultet tanlansa, jadval tuzishda bu binoning xonalarini FAQAT shu fakultet guruhlari egallaydi — boshqa fakultetga berilmaydi.</p>
           </> : <>
             <Field label="Bino"><select className="input" value={form.buildingId || ''} onChange={(e) => setForm({ ...form, buildingId: e.target.value })}><option value="">—</option>{buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
             <Field label="Sigʻim"><input className="input" type="number" value={form.capacity || 0} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></Field>

@@ -11,10 +11,11 @@ export async function loadData(prisma, semester = 1) {
       where: { semester },
       include: { groups: { include: { group: true } }, teacher: true, subject: true },
     }),
-    prisma.room.findMany({ include: { permissions: true } }),
+    prisma.room.findMany({ include: { permissions: true, building: true } }),
   ])
 
-  // Har bir xona uchun ruxsat to'plamlari (maxsus xonalar uchun)
+  // Har bir xona uchun ruxsat to'plamlari (maxsus xonalar uchun) + qaysi fakultetning
+  // binosida joylashgani (bino.facultyId=null → "asosiy/umumiy" bino, hamma foydalanadi)
   const roomMeta = rooms.map((r) => {
     const teachers = new Set(), groups = new Set(), specialties = new Set()
     for (const p of r.permissions) {
@@ -22,12 +23,16 @@ export async function loadData(prisma, semester = 1) {
       if (p.groupId != null) groups.add(p.groupId)
       if (p.specialtyId != null) specialties.add(p.specialtyId)
     }
-    return { id: r.id, name: r.name, capacity: r.capacity, type: r.type, teachers, groups, specialties }
+    return { id: r.id, name: r.name, capacity: r.capacity, type: r.type, facultyId: r.building?.facultyId ?? null, teachers, groups, specialties }
   })
 
   // Event uchun xona mosligi: sig'im yetarli VA kirish ruxsati bor
   const roomAllowed = (room, ev) => {
     if (room.capacity < ev.groupSize) return false // qattiq cheklash 5
+    // Fakultet bino egaligi — "asosiy" bino (facultyId=null) hammaga ochiq, boshqa
+    // fakultetning binosiga aralashmaydi (qattiq cheklash — bino qaysi fakultetniki
+    // bo'lsa, faqat o'sha fakultet guruhlari shu bino xonalaridan foydalanadi)
+    if (room.facultyId != null && !ev.facultyIds.includes(room.facultyId)) return false
     if (room.type === 'umumiy') return true // hamma foydalanishi mumkin
     // maxsus: o'qituvchi / guruh(lar) / yo'nalish(lar) ruxsati (qattiq cheklash 6,7) —
     // potokda tanlangan guruhlardan BIRIGA ruxsat bo'lsa yetarli
@@ -58,6 +63,7 @@ export async function loadData(prisma, semester = 1) {
         course: wgroups[0]?.course ?? 1,
         groupSize: wgroups.reduce((s, g) => s + (g.size ?? 0), 0), // barcha guruh talabalari yig'indisi
         specialtyIds: [...new Set(wgroups.map((g) => g.specialtyId).filter((v) => v != null))],
+        facultyIds: [...new Set(wgroups.map((g) => g.facultyId).filter((v) => v != null))],
         difficulty: w.subject?.difficulty ?? 3,
         slot: -1,
         room: -1,

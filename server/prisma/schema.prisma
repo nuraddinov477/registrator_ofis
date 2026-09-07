@@ -24,6 +24,7 @@ model Faculty {
   specialties Specialty[]
   groups      Group[]
   users       User[]
+  buildings   Building[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
@@ -117,6 +118,11 @@ model Building {
   name      String
   floors    Int      @default(1)
   address   String?
+  // Qaysi fakultetga tegishli — bo'sh (null) bo'lsa "asosiy/umumiy bino", hamma
+  // fakultet foydalanadi. Belgilangan bo'lsa — faqat shu fakultet guruhlari
+  // jadvalga shu bino xonalaridan foydalana oladi (qattiq cheklash, engine'da).
+  faculty   Faculty? @relation(fields: [facultyId], references: [id], onDelete: SetNull)
+  facultyId Int?
   rooms     Room[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
