@@ -5,8 +5,8 @@ export const WEIGHTS = {
   teacherGap: 6, // o'qituvchi "derazasi" (eng og'riqli)
   groupGap: 3, // guruh oynalari
   consecutive: 3, // 4 tadan ortiq ketma-ket dars (har ortig'i)
-  subjectSpread: 4, // bir fan bir kunda takror
-  subjectConsecutiveDays: 5, // bir fan ketma-ket kunlarga tushsa (masalan Dush+Sesh) — talabalarga qulay bo'lishi uchun oralatib qo'yish kerak
+  subjectSpread: 25, // bir fan bir kunda takror — talabalar uchun eng noqulayi, o'qituvchi qulayligidan (teacherGap/lonePair) ustun turishi kerak
+  subjectConsecutiveDays: 18, // bir fan ketma-ket kunlarga tushsa (masalan Dush+Sesh) — 1 kun oralik yetarli, ortiqcha tanaffus shart emas
   morning: 1, // qiyin fan kechki juftlikda
   groupBalance: 1, // guruh yukini kunlarga teng taqsimlash
   lonePair: 8, // o'qituvchi kuni 1 juftlikdan iborat — 1 soat uchun qatnamasin
