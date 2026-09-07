@@ -37,6 +37,7 @@ export function Loads() {
     try { await db.remove('loads', l.id) } catch (e) { alert(e.message || "O'chirishda xatolik") }
   }
   const nm = (coll, id) => db.get(coll).find((x) => x.id === Number(id))?.name || db.get(coll).find((x) => x.id === Number(id))?.fullName || '—'
+  const filteredLoads = loads.filter((l) => Object.values(l).join(' ').toLowerCase().includes(q.toLowerCase()))
 
   return (
     <div>
@@ -50,10 +51,12 @@ export function Loads() {
       </div>
       {(loading || failed) && loads.length === 0 ? (
         <DataState loading={loading} onRetry={() => retry('loads')} />
+      ) : tab === 'teacher' ? (
+        <TeacherLoadsView loads={filteredLoads} nm={nm} />
       ) : (
       <Table
         columns={writable ? ['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami', 'Amallar'] : ['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami']}
-        rows={loads.filter((l) => Object.values(l).join(' ').toLowerCase().includes(q.toLowerCase()))}
+        rows={filteredLoads}
         empty="Maʼlumot topilmadi"
         renderRow={(l) => {
           // Fan soati — shu yuklamaning o'zida (weeklyHours, guruhlar soniga qaramasdan BIR MARTA);
@@ -105,6 +108,52 @@ export function Loads() {
           <div className="flex justify-end gap-2 pt-2"><button type="button" className="btn-ghost" onClick={() => setOpen(false)}>Bekor</button><button type="submit" className="btn-primary">Saqlash</button></div>
         </form>
       </Modal>
+    </div>
+  )
+}
+
+// O'qituvchi bo'yicha guruhlangan ko'rinish — kim qancha band ekanini bir qarashda ko'rish uchun
+function TeacherLoadsView({ loads, nm }) {
+  const byTeacher = new Map()
+  for (const l of loads) {
+    if (!byTeacher.has(l.teacherId)) byTeacher.set(l.teacherId, [])
+    byTeacher.get(l.teacherId).push(l)
+  }
+  const teachers = [...byTeacher.entries()]
+    .map(([teacherId, items]) => ({
+      teacherId, items,
+      name: nm('teachers', teacherId),
+      totalHours: items.reduce((s, l) => s + (l.weeklyHours || 0), 0),
+    }))
+    .sort((a, b) => b.totalHours - a.totalHours || a.name.localeCompare(b.name))
+
+  if (teachers.length === 0) {
+    return <div className="card p-10 text-center text-slate-400">Maʼlumot topilmadi</div>
+  }
+
+  const loadColor = (h) => (h >= 20 ? 'red' : h >= 14 ? 'amber' : 'green')
+
+  return (
+    <div className="space-y-3">
+      {teachers.map((t) => (
+        <div key={t.teacherId} className="card p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="font-semibold text-slate-800 dark:text-slate-100">{t.name}</span>
+            <Badge color={loadColor(t.totalHours)}>{t.totalHours} soat/hafta</Badge>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800/60">
+            {t.items.map((l) => (
+              <div key={l.id} className="flex items-center justify-between py-1.5 text-sm">
+                <span className="text-slate-600 dark:text-slate-300">
+                  {nm('subjects', l.subjectId)}
+                  <span className="text-slate-400"> — {(l.groups || []).map((x) => x.group?.name).filter(Boolean).join(', ') || '—'}</span>
+                </span>
+                <span className="shrink-0 text-slate-400">{l.weeklyHours ?? '—'} soat</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

@@ -7,8 +7,10 @@ import { Badge } from '../components/ui'
 
 const facultyName = (id) => db.get('faculties').find((f) => f.id === id)?.name || '—'
 const deptName = (id) => db.get('departments').find((d) => d.id === id)?.name || '—'
+const specialtyName = (id) => db.get('specialties').find((s) => s.id === id)?.name || '—'
 const facultyOptions = () => db.get('faculties').map((f) => ({ value: f.id, label: f.name }))
 const deptOptions = () => db.get('departments').map((d) => ({ value: d.id, label: d.name }))
+const specialtyOptions = () => db.get('specialties').map((s) => ({ value: s.id, label: s.name }))
 
 const cell = (v) => <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{v}</td>
 const codeCell = (v) => <td className="px-4 py-3"><Badge color="gray">{v || '—'}</Badge></td>
@@ -120,21 +122,23 @@ export function Groups() {
   return (
     <CrudPage
       title="Akademik guruhlar" icon={Network} collection="groups"
-      columns={['Guruh nomi', 'Fakultet', 'Kurs', 'Talabalar soni', 'Taʼlim shakli']}
+      columns={['Guruh nomi', 'Fakultet', 'Mutaxassislik', 'Kurs', 'Talabalar soni', 'Taʼlim shakli']}
       fields={[
         { name: 'name', label: 'Guruh nomi', required: true },
         { name: 'facultyId', label: 'Fakultet', type: 'select', numeric: true, options: facultyOptions },
+        { name: 'specialtyId', label: 'Mutaxassislik', type: 'select', numeric: true, options: specialtyOptions },
         { name: 'course', label: 'Kurs', type: 'number', default: 1 },
         { name: 'size', label: 'Talabalar soni', type: 'number', default: 25 },
         { name: 'form', label: "Ta'lim shakli", type: 'select', options: () => ['Kunduzgi', 'Sirtqi', 'Kechki'].map((v) => ({ value: v, label: v })) },
       ]}
-      // Fakultet/Kurs/Ta'lim shakli bo'yicha filtrlab, hammasi qo'shilganini tekshirish uchun
+      // Fakultet/Mutaxassislik/Kurs/Ta'lim shakli bo'yicha filtrlab, hammasi qo'shilganini tekshirish uchun
       filters={[
         { name: 'facultyId', label: 'Barcha fakultetlar', options: facultyOptions },
+        { name: 'specialtyId', label: 'Barcha mutaxassisliklar', options: specialtyOptions },
         { name: 'course', label: 'Barcha kurslar', options: courseOptions },
         { name: 'form', label: 'Barcha shakllar', options: formOptions },
       ]}
-      renderCells={(r) => <>{cell(<span className="font-medium">{r.name}</span>)}{cell(facultyName(r.facultyId))}{cell(`${r.course}-kurs`)}{cell(r.size)}{cell(r.form)}</>}
+      renderCells={(r) => <>{cell(<span className="font-medium">{r.name}</span>)}{cell(facultyName(r.facultyId))}{cell(specialtyName(r.specialtyId))}{cell(`${r.course}-kurs`)}{cell(r.size)}{cell(r.form)}</>}
     />
   )
 }

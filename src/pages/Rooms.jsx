@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, KeyRound } from 'lucide-react'
 import { db, useCollection, useIsLoading, useLoadFailed, retry } from '../data/store'
 import { canWrite } from '../lib/access'
 import { SearchBar, Table, Modal, Field, Badge, DataState } from '../components/ui'
+import RoomPermissionsModal from '../components/RoomPermissionsModal'
 
 // Xona jihoz/xususiyatlari — belgilash mumkin bo'lgan sobit ro'yxat
 const ROOM_FEATURES = ['Proyektor', 'Konditsioner', 'Interaktiv doska', 'Kompyuterlar', 'Ovoz tizimi', 'Internet (Wi-Fi)']
@@ -20,6 +21,7 @@ export default function Rooms() {
   const [fType, setFType] = useState('')          // xona filtri: turi
   const [fCap, setFCap] = useState('')            // xona filtri: minimal sig'im
   const [customFeature, setCustomFeature] = useState('') // ro'yxatda yo'q xususiyat uchun qo'lda kiritish
+  const [permRoom, setPermRoom] = useState(null) // ruxsatlar oynasi ochilgan xona (maxsus)
 
   const isB = tab === 'buildings'
   const coll = isB ? 'buildings' : 'rooms'
@@ -35,7 +37,7 @@ export default function Rooms() {
     return true
   })
 
-  const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '' } : { name: '', buildingId: '', capacity: 30, kind: 'Maʼruza', features: [] }); setCustomFeature(''); setOpen(true) }
+  const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '' } : { name: '', buildingId: '', capacity: 30, kind: 'Maʼruza', type: 'umumiy', features: [] }); setCustomFeature(''); setOpen(true) }
   const openEdit = (r) => { setEditing(r); setForm(isB ? r : { ...r, features: parseFeatures(r) }); setCustomFeature(''); setOpen(true) }
   const save = (e) => {
     e.preventDefault()
@@ -98,7 +100,7 @@ export default function Rooms() {
         <DataState loading={loading} onRetry={() => retry(coll)} />
       ) : (
       <Table
-        columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Xususiyatlar']), ...(writable ? ['Amallar'] : [])]}
+        columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Kirish', 'Xususiyatlar']), ...(writable ? ['Amallar'] : [])]}
         rows={list}
         renderRow={(r) => (
           <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/30">
@@ -111,6 +113,9 @@ export default function Rooms() {
               <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.capacity}</td>
               <td className="px-4 py-3">{r.kind ? <Badge>{r.kind}</Badge> : <span className="text-slate-400">—</span>}</td>
               <td className="px-4 py-3">
+                <Badge color={r.type === 'maxsus' ? 'amber' : 'green'}>{r.type === 'maxsus' ? 'Maxsus' : 'Ochiq'}</Badge>
+              </td>
+              <td className="px-4 py-3">
                 <div className="flex flex-wrap gap-1">
                   {parseFeatures(r).length
                     ? parseFeatures(r).map((f) => <Badge key={f} color="gray">{f}</Badge>)
@@ -121,6 +126,9 @@ export default function Rooms() {
             {writable && (
               <td className="px-4 py-3">
                 <div className="flex gap-1">
+                  {!isB && r.type === 'maxsus' && (
+                    <button onClick={() => setPermRoom(r)} title="Kirish ruxsatlari" className="rounded-md p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-500 dark:hover:bg-amber-950/40"><KeyRound size={15} /></button>
+                  )}
                   <button onClick={() => openEdit(r)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand dark:hover:bg-slate-800"><Pencil size={15} /></button>
                   <button onClick={() => confirm("O'chirilsinmi?") && db.remove(coll, r.id)} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/40"><Trash2 size={15} /></button>
                 </div>
@@ -141,6 +149,17 @@ export default function Rooms() {
             <Field label="Bino"><select className="input" value={form.buildingId || ''} onChange={(e) => setForm({ ...form, buildingId: e.target.value })}><option value="">—</option>{buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
             <Field label="Sigʻim"><input className="input" type="number" value={form.capacity || 0} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></Field>
             <Field label="Turi"><select className="input" value={form.kind || ''} onChange={(e) => setForm({ ...form, kind: e.target.value })}>{['Maʼruza', 'Amaliy', 'Laboratoriya', 'Kompyuter'].map((v) => <option key={v}>{v}</option>)}</select></Field>
+            <Field label="Kirish turi">
+              <select className="input" value={form.type || 'umumiy'} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+                <option value="umumiy">Ochiq — hamma foydalana oladi</option>
+                <option value="maxsus">Maxsus — faqat ruxsat berilganlar</option>
+              </select>
+            </Field>
+            {editing && form.type === 'maxsus' && (
+              <p className="text-xs text-slate-400">
+                Kimlarga ruxsat berilganini saqlagach, jadvaldagi <KeyRound size={12} className="mb-0.5 inline" /> tugmasidan boshqarasiz.
+              </p>
+            )}
             <Field label="Xususiyatlar">
               <div className="space-y-2.5">
                 <div className="flex flex-wrap gap-2">
@@ -183,6 +202,8 @@ export default function Rooms() {
           </div>
         </form>
       </Modal>
+
+      <RoomPermissionsModal room={permRoom} onClose={() => setPermRoom(null)} />
     </div>
   )
 }
