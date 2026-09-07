@@ -6,6 +6,7 @@ export const WEIGHTS = {
   groupGap: 3, // guruh oynalari
   consecutive: 3, // 4 tadan ortiq ketma-ket dars (har ortig'i)
   subjectSpread: 4, // bir fan bir kunda takror
+  subjectConsecutiveDays: 5, // bir fan ketma-ket kunlarga tushsa (masalan Dush+Sesh) — talabalarga qulay bo'lishi uchun oralatib qo'yish kerak
   morning: 1, // qiyin fan kechki juftlikda
   groupBalance: 1, // guruh yukini kunlarga teng taqsimlash
   lonePair: 8, // o'qituvchi kuni 1 juftlikdan iborat — 1 soat uchun qatnamasin
@@ -38,10 +39,13 @@ function consecutivePenalty(pairs) {
 export function groupCost(groupEvents, W = WEIGHTS) {
   const perDay = Array.from({ length: DAYS }, () => [])
   const rooms = new Set()
+  const subjectDays = new Map() // subjectId -> Set(day) — kunlar oralig'ini tekshirish uchun
   for (const e of groupEvents) {
     if (e.slot < 0) continue
     perDay[dayOf(e.slot)].push(e)
     rooms.add(e.room)
+    if (!subjectDays.has(e.subjectId)) subjectDays.set(e.subjectId, new Set())
+    subjectDays.get(e.subjectId).add(dayOf(e.slot))
   }
 
   let cost = 0
@@ -68,6 +72,16 @@ export function groupCost(groupEvents, W = WEIGHTS) {
   cost += counts.reduce((s, c) => s + c * c, 0) * W.groupBalance * 0.5
   // guruh uchun xona barqarorligi
   if (rooms.size > 1) cost += (rooms.size - 1) * W.roomChange
+
+  // Fan ketma-ket kunlarga tushmasin (masalan Dushanba+Seshanba) — kamida bitta
+  // kun oralatib joylashsin (Dushanba+Chorshanba va h.k.), talabalarga qulay bo'lsin
+  for (const days of subjectDays.values()) {
+    const sorted = [...days].sort((a, b) => a - b)
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i] - sorted[i - 1] === 1) cost += W.subjectConsecutiveDays
+    }
+  }
+
   return cost
 }
 
