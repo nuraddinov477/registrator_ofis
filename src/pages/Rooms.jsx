@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Plus, Pencil, Trash2, X, KeyRound } from 'lucide-react'
 import { db, useCollection, useIsLoading, useLoadFailed, retry } from '../data/store'
 import { canWrite } from '../lib/access'
-import { SearchBar, Table, Modal, Field, Badge, DataState } from '../components/ui'
+import { SearchBar, Table, Modal, Field, Badge, DataState, SearchableSelect } from '../components/ui'
 import RoomPermissionsModal from '../components/RoomPermissionsModal'
 
 // Xona jihoz/xususiyatlari — belgilash mumkin bo'lgan sobit ro'yxat
@@ -81,10 +81,11 @@ export default function Rooms() {
 
       {!isB && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <select className="input h-9 w-auto py-1" value={fBuilding} onChange={(e) => setFBuilding(e.target.value)}>
-            <option value="">Barcha binolar</option>
-            {buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
+          <div className="w-auto min-w-[12rem]">
+            <SearchableSelect value={fBuilding} onChange={setFBuilding}
+              options={buildings.map((b) => ({ value: b.id, label: b.name }))}
+              emptyLabel="Barcha binolar" placeholder="Bino qidirish..." />
+          </div>
           <select className="input h-9 w-auto py-1" value={fType} onChange={(e) => setFType(e.target.value)}>
             <option value="">Barcha turlar</option>
             {roomTypes.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -151,14 +152,16 @@ export default function Rooms() {
             <Field label="Qavatlar"><input className="input" type="number" value={form.floors || 1} onChange={(e) => setForm({ ...form, floors: e.target.value })} /></Field>
             <Field label="Manzil"><input className="input" value={form.address || ''} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
             <Field label="Fakultet">
-              <select className="input" value={form.facultyId || ''} onChange={(e) => setForm({ ...form, facultyId: e.target.value })}>
-                <option value="">Asosiy — hamma fakultet foydalanadi</option>
-                {faculties.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
+              <SearchableSelect value={form.facultyId || ''} onChange={(v) => setForm({ ...form, facultyId: v })}
+                options={faculties.map((f) => ({ value: f.id, label: f.name }))}
+                emptyLabel="Asosiy — hamma fakultet foydalanadi" placeholder="Fakultet qidirish..." />
             </Field>
             <p className="text-xs text-slate-400">Fakultet tanlansa, jadval tuzishda bu binoning xonalarini FAQAT shu fakultet guruhlari egallaydi — boshqa fakultetga berilmaydi.</p>
           </> : <>
-            <Field label="Bino"><select className="input" value={form.buildingId || ''} onChange={(e) => setForm({ ...form, buildingId: e.target.value })}><option value="">—</option>{buildings.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
+            <Field label="Bino">
+              <SearchableSelect value={form.buildingId || ''} onChange={(v) => setForm({ ...form, buildingId: v })}
+                options={buildings.map((b) => ({ value: b.id, label: b.name }))} placeholder="Bino qidirish..." />
+            </Field>
             <Field label="Sigʻim"><input className="input" type="number" value={form.capacity || 0} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></Field>
             <Field label="Turi"><select className="input" value={form.kind || ''} onChange={(e) => setForm({ ...form, kind: e.target.value })}>{['Maʼruza', 'Amaliy', 'Laboratoriya', 'Kompyuter'].map((v) => <option key={v}>{v}</option>)}</select></Field>
             <Field label="Kirish turi">

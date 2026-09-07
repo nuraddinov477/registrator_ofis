@@ -267,33 +267,28 @@ export function Requests() {
         <form onSubmit={create} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Yuboruvchi kafedra *">
-              <select className="input" required value={form.fromDepartmentId || ''} onChange={(e) => setForm({ ...form, fromDepartmentId: e.target.value })}>
-                <option value="">—</option>{refs.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
+              <SearchableSelect value={form.fromDepartmentId || ''} onChange={(v) => setForm({ ...form, fromDepartmentId: v })}
+                options={refs.departments.map((d) => ({ value: d.id, label: d.name }))} placeholder="Kafedra qidirish..." />
             </Field>
             <Field label="Qabul qiluvchi kafedra *">
-              <select className="input" required value={form.toDepartmentId || ''} onChange={(e) => setForm({ ...form, toDepartmentId: e.target.value })}>
-                <option value="">—</option>{refs.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
+              <SearchableSelect value={form.toDepartmentId || ''} onChange={(v) => setForm({ ...form, toDepartmentId: v })}
+                options={refs.departments.map((d) => ({ value: d.id, label: d.name }))} placeholder="Kafedra qidirish..." />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Fan">
-              <select className="input" value={form.subjectId || ''} onChange={(e) => setForm({ ...form, subjectId: e.target.value })}>
-                <option value="">—</option>{refs.subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              <SearchableSelect value={form.subjectId || ''} onChange={(v) => setForm({ ...form, subjectId: v })}
+                options={refs.subjects.map((s) => ({ value: s.id, label: s.name }))} placeholder="Fan qidirish..." />
             </Field>
             <Field label="O'qituvchi">
-              <select className="input" value={form.teacherId || ''} onChange={(e) => setForm({ ...form, teacherId: e.target.value })}>
-                <option value="">—</option>{refs.teachers.map((t) => <option key={t.id} value={t.id}>{t.fullName}</option>)}
-              </select>
+              <SearchableSelect value={form.teacherId || ''} onChange={(v) => setForm({ ...form, teacherId: v })}
+                options={refs.teachers.map((t) => ({ value: t.id, label: t.fullName }))} placeholder="F.I.Sh. qidirish..." />
             </Field>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <Field label="Xona">
-              <select className="input" value={form.roomId || ''} onChange={(e) => setForm({ ...form, roomId: e.target.value })}>
-                <option value="">—</option>{refs.rooms.map((rm) => <option key={rm.id} value={rm.id}>{rm.name}</option>)}
-              </select>
+              <SearchableSelect value={form.roomId || ''} onChange={(v) => setForm({ ...form, roomId: v })}
+                options={refs.rooms.map((rm) => ({ value: rm.id, label: rm.name }))} placeholder="Xona qidirish..." />
             </Field>
             <Field label="Kurs"><input className="input" type="number" value={form.course || ''} onChange={(e) => setForm({ ...form, course: e.target.value })} /></Field>
             <Field label="Haftalik soat"><input className="input" type="number" value={form.weeklyHours || ''} onChange={(e) => setForm({ ...form, weeklyHours: e.target.value })} /></Field>
@@ -406,13 +401,22 @@ export function UsersPage() {
           <Field label="Rol"><select className="input" value={form.role || ''} onChange={(e) => setForm({ ...form, role: e.target.value, facultyId: '', departmentId: '', teacherId: '' })}>{assignable.map((r) => <option key={r}>{r}</option>)}</select></Field>
           {/* Rol qamrovi: userni o'z birligiga biriktirish (scoping shu asosda ishlaydi) */}
           {form.role === 'Fakultet operatori' && isSuper && (
-            <Field label="Fakultet (biriktirish)"><select className="input" value={form.facultyId || ''} onChange={(e) => setForm({ ...form, facultyId: e.target.value })}><option value="">— tanlang —</option>{faculties.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></Field>
+            <Field label="Fakultet (biriktirish)">
+              <SearchableSelect value={form.facultyId || ''} onChange={(v) => setForm({ ...form, facultyId: v })}
+                options={faculties.map((f) => ({ value: f.id, label: f.name }))} placeholder="Fakultet qidirish..." />
+            </Field>
           )}
           {form.role === 'Kafedra mudiri' && (
-            <Field label="Kafedra (biriktirish)"><select className="input" value={form.departmentId || ''} onChange={(e) => setForm({ ...form, departmentId: e.target.value })}><option value="">— tanlang —</option>{deptOptions.map((d) => <option key={d.id} value={d.id}>{d.name}{d.faculty ? ` — ${d.faculty.name}` : ''}</option>)}</select></Field>
+            <Field label="Kafedra (biriktirish)">
+              <SearchableSelect value={form.departmentId || ''} onChange={(v) => setForm({ ...form, departmentId: v })}
+                options={deptOptions.map((d) => ({ value: d.id, label: d.faculty ? `${d.name} — ${d.faculty.name}` : d.name }))} placeholder="Kafedra qidirish..." />
+            </Field>
           )}
           {form.role === 'Oʻqituvchi' && (
-            <Field label="O'qituvchi yozuvi (biriktirish)"><select className="input" value={form.teacherId || ''} onChange={(e) => setForm({ ...form, teacherId: e.target.value })}><option value="">— tanlang —</option>{teacherOptions.map((t) => <option key={t.id} value={t.id}>{t.fullName}{t.department ? ` — ${t.department.name}` : ''}</option>)}</select></Field>
+            <Field label="O'qituvchi yozuvi (biriktirish)">
+              <SearchableSelect value={form.teacherId || ''} onChange={(v) => setForm({ ...form, teacherId: v })}
+                options={teacherOptions.map((t) => ({ value: t.id, label: t.department ? `${t.fullName} — ${t.department.name}` : t.fullName }))} placeholder="F.I.Sh. qidirish..." />
+            </Field>
           )}
           <Field label={editing ? 'Yangi parol' : 'Parol'}>
             <input className="input" type="password" required={!editing} value={form.password || ''}

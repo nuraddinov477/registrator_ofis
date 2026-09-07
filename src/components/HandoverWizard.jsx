@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { CheckCircle2, CalendarClock } from 'lucide-react'
 import { api } from '../api/client'
 import { db } from '../data/store'
-import { Modal, Field, Badge } from './ui'
+import { Modal, Field, Badge, SearchableSelect } from './ui'
 
 // ─────────────────── Almashtirish ustasi (dekret / ta'til) ───────────────────
 // O'qituvchining barcha yuklamalarini bir oynada hamkasblarga taqsimlaydi.
@@ -101,14 +101,16 @@ export default function HandoverWizard({ teacher, onClose }) {
                     <span className="font-medium text-slate-800 dark:text-slate-100">{w.subject}</span>
                     <span className="text-slate-500">{w.group} · {w.weeklyHours} juftlik/hafta</span>
                   </div>
-                  <select className="input" value={picks[w.id] || ''} onChange={(e) => setPicks({ ...picks, [w.id]: e.target.value })}>
-                    <option value="">— qabul qiluvchini tanlang —</option>
-                    {optionsFor(w).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.fullName} · {c.totalHours} soat{c.subjectIds.includes(w.subjectId) ? " · shu fanni o'qitadi ✓" : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableSelect
+                    value={picks[w.id] || ''}
+                    onChange={(v) => setPicks({ ...picks, [w.id]: v })}
+                    emptyLabel="— qabul qiluvchini tanlang —"
+                    placeholder="F.I.Sh. qidirish..."
+                    options={optionsFor(w).map((c) => ({
+                      value: c.id,
+                      label: `${c.fullName} · ${c.totalHours} soat${c.subjectIds.includes(w.subjectId) ? " · shu fanni o'qitadi ✓" : ''}`,
+                    }))}
+                  />
                 </div>
               ))}
             </div>

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { db, useCollection, useIsLoading, useLoadFailed, retry } from '../data/store'
 import { canWrite } from '../lib/access'
-import { PageHeader, SearchBar, Table, Modal, Field, DataState } from './ui'
+import { PageHeader, SearchBar, Table, Modal, Field, DataState, SearchableSelect } from './ui'
 
 const empty = (fields) => Object.fromEntries(fields.map((f) => [f.name, f.default ?? '']))
 
@@ -108,8 +108,17 @@ export default function CrudPage({ title, subtitle, icon, collection, fields, co
         <form onSubmit={save} className="space-y-4">
           {fields.map((f) => (
             <Field key={f.name} label={f.label}>
-              {f.type === 'select' ? (
-                <select className="input" value={form[f.name] ?? ''} onChange={(e) => setForm({ ...form, [f.name]: f.numeric ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value })}>
+              {f.type === 'select' && f.numeric ? (
+                // Ma'lumotlar bazasidagi ro'yxat (fakultet/kafedra/mutaxassislik va h.k.) —
+                // uzun bo'lishi mumkin, shuning uchun qidiruvli tanlov
+                <SearchableSelect
+                  value={form[f.name] ?? ''}
+                  onChange={(v) => setForm({ ...form, [f.name]: v === '' ? '' : Number(v) })}
+                  options={f.options()}
+                />
+              ) : f.type === 'select' ? (
+                // Qisqa, o'zgarmas ro'yxat (holat/shakl/tur va h.k.) — qidirish shart emas
+                <select className="input" value={form[f.name] ?? ''} onChange={(e) => setForm({ ...form, [f.name]: e.target.value })}>
                   <option value="">—</option>
                   {f.options().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>

@@ -92,7 +92,7 @@ export function Modal({ open, onClose, title, children }) {
 // <select>'dan qulayroq: matn kiritib filtrlaydi, sichqoncha bilan tanlaydi.
 // options: [{ value, label }]. `multi` — bir nechta tanlash (potok guruhlari kabi):
 // `value` massiv bo'ladi, tanlanganlar chip (✕ bilan) ko'rinadi, ro'yxat yopilmay turadi.
-export function SearchableSelect({ value, onChange, options, placeholder = 'Qidirish...', multi = false }) {
+export function SearchableSelect({ value, onChange, options, placeholder = 'Qidirish...', multi = false, emptyLabel = '—' }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const ref = useRef(null)
@@ -137,7 +137,7 @@ export function SearchableSelect({ value, onChange, options, placeholder = 'Qidi
         {multi ? (
           <span className="text-slate-400">{selectedValues.length ? `${selectedValues.length} ta tanlandi — qo'shish uchun bosing` : '—'}</span>
         ) : (
-          <span className={`truncate ${selected ? '' : 'text-slate-400'}`}>{selected ? selected.label : '—'}</span>
+          <span className={`truncate ${selected ? '' : 'text-slate-400'}`}>{selected ? selected.label : emptyLabel}</span>
         )}
         <ChevronDown size={16} className="shrink-0 text-slate-400" />
       </button>
@@ -159,7 +159,7 @@ export function SearchableSelect({ value, onChange, options, placeholder = 'Qidi
                 type="button"
                 className="block w-full px-3 py-1.5 text-left text-sm text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
                 onClick={() => { onChange(''); setOpen(false) }}
-              >—</button>
+              >{emptyLabel}</button>
             )}
             {filtered.length === 0 && <div className="px-3 py-2 text-sm text-slate-400">Topilmadi</div>}
             {filtered.map((o) => {

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Zap, Loader2, RefreshCw, CalendarDays, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import { roleOf, ROLES } from '../lib/access'
-import { Modal, Field, Badge } from '../components/ui'
+import { Modal, Field, Badge, SearchableSelect } from '../components/ui'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const DAY_COLORS = [
@@ -230,10 +230,11 @@ export default function Schedule() {
         )}
         {!isTeacher && viewMode === 'group' && (
           <Field label="Guruh">
-            <select className="input min-w-[160px]" value={groupId ?? ''} onChange={(e) => setGroupId(Number(e.target.value))}>
-              {groups.length === 0 && <option value="">— guruh yo'q —</option>}
-              {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </select>
+            <div className="min-w-[200px]">
+              <SearchableSelect value={groupId ?? ''} onChange={(v) => setGroupId(Number(v))}
+                options={groups.map((g) => ({ value: g.id, label: g.name }))}
+                emptyLabel="— guruh yo'q —" placeholder="Guruh qidirish..." />
+            </div>
           </Field>
         )}
         {run && (
@@ -335,22 +336,19 @@ export default function Schedule() {
               {run?.semester}-semestr · <span className="font-medium text-slate-700 dark:text-slate-200">{groups.find((g) => g.id === Number(groupId))?.name}</span>
             </div>
             <Field label="Fan">
-              <select className="input" value={editForm.subjectId} onChange={(e) => setEditForm({ ...editForm, subjectId: e.target.value })}>
-                <option value="">— tanlang —</option>
-                {refs.subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              <SearchableSelect value={editForm.subjectId} onChange={(v) => setEditForm({ ...editForm, subjectId: v })}
+                options={refs.subjects.map((s) => ({ value: s.id, label: s.name }))}
+                emptyLabel="— tanlang —" placeholder="Fan qidirish..." />
             </Field>
             <Field label="O'qituvchi">
-              <select className="input" value={editForm.teacherId} onChange={(e) => setEditForm({ ...editForm, teacherId: e.target.value })}>
-                <option value="">— tanlang —</option>
-                {refs.teachers.map((t) => <option key={t.id} value={t.id}>{t.fullName}</option>)}
-              </select>
+              <SearchableSelect value={editForm.teacherId} onChange={(v) => setEditForm({ ...editForm, teacherId: v })}
+                options={refs.teachers.map((t) => ({ value: t.id, label: t.fullName }))}
+                emptyLabel="— tanlang —" placeholder="F.I.Sh. qidirish..." />
             </Field>
             <Field label="Xona">
-              <select className="input" value={editForm.roomId} onChange={(e) => setEditForm({ ...editForm, roomId: e.target.value })}>
-                <option value="">— tanlang —</option>
-                {refs.rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
+              <SearchableSelect value={editForm.roomId} onChange={(v) => setEditForm({ ...editForm, roomId: v })}
+                options={refs.rooms.map((r) => ({ value: r.id, label: r.name }))}
+                emptyLabel="— tanlang —" placeholder="Xona qidirish..." />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Kun">
