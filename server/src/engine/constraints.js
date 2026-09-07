@@ -7,6 +7,7 @@ export const WEIGHTS = {
   consecutive: 3, // 4 tadan ortiq ketma-ket dars (har ortig'i)
   subjectSpread: 25, // bir fan bir kunda takror — talabalar uchun eng noqulayi, o'qituvchi qulayligidan (teacherGap/lonePair) ustun turishi kerak
   subjectConsecutiveDays: 18, // bir fan ketma-ket kunlarga tushsa (masalan Dush+Sesh) — 1 kun oralik yetarli, ortiqcha tanaffus shart emas
+  subjectAdjacent: 20, // ikki XIL fan bir kunda ketma-ket juftlikda kelsa (masalan 2-juftlik va 3-juftlik). Xuddi shu fanning ikki juftligi (ma'ruza+seminar) ketma-ket kelishi jarimasiz — bu tabiiy juftlik
   morning: 1, // qiyin fan kechki juftlikda
   groupBalance: 1, // guruh yukini kunlarga teng taqsimlash
   lonePair: 8, // o'qituvchi kuni 1 juftlikdan iborat — 1 soat uchun qatnamasin
@@ -56,10 +57,31 @@ export function groupCost(groupEvents, W = WEIGHTS) {
     cost += gapsInDay(pairs) * W.groupGap
     cost += consecutivePenalty(pairs) * W.consecutive
 
-    // bir fan bir kunda takrorlansa
-    const seen = new Map()
-    for (const e of day) seen.set(e.subjectId, (seen.get(e.subjectId) || 0) + 1)
-    for (const n of seen.values()) if (n > 1) cost += (n - 1) * W.subjectSpread
+    // Bir fan bir kunda ikki marta bo'lsa — FAQAT orada tanaffus bo'lsa jarimalanadi
+    // (masalan 2-juftlik va 5-juftlik — noqulay). Ketma-ket (2-juftlik+3-juftlik —
+    // ma'ruza+seminar) tabiiy juftlik hisoblanadi, jarimasiz.
+    const bySubject = new Map()
+    for (const e of day) {
+      if (!bySubject.has(e.subjectId)) bySubject.set(e.subjectId, [])
+      bySubject.get(e.subjectId).push(pairOf(e.slot))
+    }
+    for (const subjPairs of bySubject.values()) {
+      if (subjPairs.length < 2) continue
+      const sortedP = [...subjPairs].sort((a, b) => a - b)
+      for (let i = 1; i < sortedP.length; i++) {
+        if (sortedP[i] - sortedP[i - 1] !== 1) cost += W.subjectSpread
+      }
+    }
+
+    // Ikki XIL fan ketma-ket juftlikda kelmasin (masalan 2-juftlik boshqa fan,
+    // 3-juftlik yana boshqa fan — talabalarga og'ir, ayniqsa til fanlarida).
+    // Xuddi shu fanning ikkita juftligi (ma'ruza+seminar) ketma-ket kelishi —
+    // tabiiy juftlik, yuqoridagi tsiklda hisobga olingan, bu yerda jarimasiz.
+    const daySorted = [...day].sort((a, b) => pairOf(a.slot) - pairOf(b.slot))
+    for (let i = 1; i < daySorted.length; i++) {
+      const p1 = pairOf(daySorted[i - 1].slot), p2 = pairOf(daySorted[i].slot)
+      if (p2 - p1 === 1 && daySorted[i - 1].subjectId !== daySorted[i].subjectId) cost += W.subjectAdjacent
+    }
 
     // qiyin fan (difficulty>=4) kechki juftlikda — ertalabni rag'batlantirish
     for (const e of day) {
