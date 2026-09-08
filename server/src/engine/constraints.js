@@ -9,10 +9,14 @@ export const WEIGHTS = {
   teacherGap: 6, // o'qituvchi "derazasi" (eng og'riqli)
   groupGap: 3, // guruh oynalari
   consecutive: 3, // 4 tadan ortiq ketma-ket dars (har ortig'i)
-  subjectSpread: 25, // bir fan bir kunda takror — talabalar uchun eng noqulayi, o'qituvchi qulayligidan (teacherGap/lonePair) ustun turishi kerak
+  subjectSpread: 25, // bir fan bir kunda ikkinchi marta kelsa (ketma-ket bo'lsa ham, orada tanaffus bo'lsa ham) — boshqa kunga ko'chirilishi kerak
   subjectConsecutiveDays: 18, // bir fan ketma-ket kunlarga tushsa (masalan Dush+Sesh) — 1 kun oralik yetarli, ortiqcha tanaffus shart emas
-  subjectAdjacent: 20, // ikki XIL fan bir kunda ketma-ket juftlikda kelsa (masalan 2-juftlik va 3-juftlik). Xuddi shu fanning ikki juftligi (ma'ruza+seminar) ketma-ket kelishi jarimasiz — bu tabiiy juftlik
+  subjectAdjacent: 20, // ikki XIL fan bir kunda ketma-ket juftlikda kelsa (masalan 2-juftlik va 3-juftlik) — talabalarga og'ir, ayniqsa til fanlarida
   subjectTypeOrder: 16, // bir fanning ma'ruza/seminar/amaliy turlari haftada noto'g'ri tartibda kelsa (masalan seminar ma'ruzadan oldin) — har teskari juftlik uchun
+  groupDayMax: 15, // guruh uchun kunlik darslar soni 4 tadan oshsa — har ortiqcha dars uchun
+  groupDayMin: 12, // guruh uchun band kunda atigi 1 ta dars bo'lsa (2 tadan kam) — talaba shu 1 soat uchun kelmasin
+  assignedRoom: 22, // guruhga maxsus biriktirilgan xona bor-u, dars boshqa xonaga qo'yilgan bo'lsa
+  roomFit: 2, // xona sig'imi guruh sonidan (+2 tolerantlik bilan) ortiqcha bo'lsa — har ortiqcha o'rin uchun
   morning: 1, // qiyin fan kechki juftlikda
   groupBalance: 1, // guruh yukini kunlarga teng taqsimlash
   lonePair: 8, // o'qituvchi kuni 1 juftlikdan iborat — 1 soat uchun qatnamasin
@@ -46,42 +50,43 @@ export function groupCost(groupEvents, W = WEIGHTS) {
   const perDay = Array.from({ length: DAYS }, () => [])
   const rooms = new Set()
   const subjectDays = new Map() // subjectId -> Set(day) — kunlar oralig'ini tekshirish uchun
+  let cost = 0
   for (const e of groupEvents) {
     if (e.slot < 0) continue
     perDay[dayOf(e.slot)].push(e)
     rooms.add(e.room)
     if (!subjectDays.has(e.subjectId)) subjectDays.set(e.subjectId, new Set())
     subjectDays.get(e.subjectId).add(dayOf(e.slot))
+
+    // Guruhga maxsus biriktirilgan xona(lar) bor-u, dars boshqa xonaga qo'yilgan bo'lsa
+    if (e.assignedRooms && e.assignedRooms.length && e.room >= 0 && !e.assignedRooms.includes(e.room)) {
+      cost += W.assignedRoom
+    }
+    // Xona sig'imi guruh sonidan ancha ortiq bo'lmasin (+2 tolerantlik) — mos xona afzal
+    const cap = e.roomCapacities ? e.roomCapacities[e.room] : null
+    if (cap != null && cap - e.groupSize > 2) cost += (cap - e.groupSize - 2) * W.roomFit
   }
 
-  let cost = 0
   const counts = []
   for (const day of perDay) {
     const pairs = day.map((e) => pairOf(e.slot))
     counts.push(day.length)
     cost += gapsInDay(pairs) * W.groupGap
     cost += consecutivePenalty(pairs) * W.consecutive
+    // Kunlik darslar soni: 4 tadan oshmasin, band kunda 1 tadan iborat bo'lmasin (2 tadan kam)
+    if (day.length > 4) cost += (day.length - 4) * W.groupDayMax
+    else if (day.length === 1) cost += W.groupDayMin
 
-    // Bir fan bir kunda ikki marta bo'lsa — FAQAT orada tanaffus bo'lsa jarimalanadi
-    // (masalan 2-juftlik va 5-juftlik — noqulay). Ketma-ket (2-juftlik+3-juftlik —
-    // ma'ruza+seminar) tabiiy juftlik hisoblanadi, jarimasiz.
+    // Bir fan bir kunda ikkinchi (yoki undan ortiq) marta kelsa — ketma-ket bo'lsa ham,
+    // orada tanaffus bo'lsa ham — talabalar uchun noqulay, boshqa kunga ko'chirilishi kerak.
     const bySubject = new Map()
-    for (const e of day) {
-      if (!bySubject.has(e.subjectId)) bySubject.set(e.subjectId, [])
-      bySubject.get(e.subjectId).push(pairOf(e.slot))
-    }
-    for (const subjPairs of bySubject.values()) {
-      if (subjPairs.length < 2) continue
-      const sortedP = [...subjPairs].sort((a, b) => a - b)
-      for (let i = 1; i < sortedP.length; i++) {
-        if (sortedP[i] - sortedP[i - 1] !== 1) cost += W.subjectSpread
-      }
+    for (const e of day) bySubject.set(e.subjectId, (bySubject.get(e.subjectId) || 0) + 1)
+    for (const count of bySubject.values()) {
+      if (count > 1) cost += (count - 1) * W.subjectSpread
     }
 
     // Ikki XIL fan ketma-ket juftlikda kelmasin (masalan 2-juftlik boshqa fan,
     // 3-juftlik yana boshqa fan — talabalarga og'ir, ayniqsa til fanlarida).
-    // Xuddi shu fanning ikkita juftligi (ma'ruza+seminar) ketma-ket kelishi —
-    // tabiiy juftlik, yuqoridagi tsiklda hisobga olingan, bu yerda jarimasiz.
     const daySorted = [...day].sort((a, b) => pairOf(a.slot) - pairOf(b.slot))
     for (let i = 1; i < daySorted.length; i++) {
       const p1 = pairOf(daySorted[i - 1].slot), p2 = pairOf(daySorted[i].slot)

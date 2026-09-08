@@ -57,7 +57,7 @@ export function greedyConstruct(ctx) {
   }
 
   for (const ev of order) {
-    if (ev.rooms.length === 0) continue // nomzod xona yo'q — joylab bo'lmaydi
+    if (ev.rooms.length === 0 || ev.slots.length === 0) continue // nomzod xona/slot yo'q — joylab bo'lmaydi
     let best = null // { slot, room, conflicts } — zaxira (qattiq konfliktsiz, lekin kun/tur jihatidan yomon bo'lishi mumkin)
     let ok = null // qattiq konfliktsiz VA kun-toqnashuvsiz, lekin tur-tartibi buzilishi mumkin
     let goodDay = null // hammasi to'g'ri — topilsa darhol tanlanadi

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Zap, Loader2, RefreshCw, CalendarDays, Trash2 } from 'lucide-react'
+import { Zap, Loader2, RefreshCw, CalendarDays, Trash2, UserCog, Download } from 'lucide-react'
 import { api } from '../api/client'
 import { roleOf, ROLES } from '../lib/access'
 import { Modal, Field, Badge, SearchableSelect } from '../components/ui'
+import TeacherConstraintsModal from '../components/TeacherConstraintsModal'
+import ScheduleExportModal from '../components/ScheduleExportModal'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const DAY_COLORS = [
@@ -32,6 +34,8 @@ export default function Schedule() {
   const [editErr, setEditErr] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const [tcOpen, setTcOpen] = useState(false) // o'qituvchi istisnolari oynasi
+  const [exportOpen, setExportOpen] = useState(false) // jadvalni yuklab olish oynasi
   const [genOpen, setGenOpen] = useState(false)
   const [semester, setSemester] = useState('1')
   const [seconds, setSeconds] = useState(5)
@@ -237,6 +241,18 @@ export default function Schedule() {
             </div>
           </Field>
         )}
+        {canGenerate && (
+          <button onClick={() => setTcOpen(true)} title="O'qituvchi istisnolari (kunlar/paralar)"
+            className="mb-0.5 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+            <UserCog size={15} /> O'qituvchi istisnolari
+          </button>
+        )}
+        {runId && (
+          <button onClick={() => setExportOpen(true)} title="Jadvalni yuklab olish"
+            className="mb-0.5 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+            <Download size={15} /> Yuklab olish
+          </button>
+        )}
         {run && (
           <div className="flex items-center gap-2 pb-2">
             {statusBadge(run.status)}
@@ -389,6 +405,9 @@ export default function Schedule() {
           </div>
         )}
       </Modal>
+
+      <TeacherConstraintsModal open={tcOpen} onClose={() => setTcOpen(false)} />
+      <ScheduleExportModal open={exportOpen} onClose={() => setExportOpen(false)} runId={runId} />
     </div>
   )
 }

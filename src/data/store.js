@@ -7,7 +7,7 @@ const ENDPOINTS = {
   faculties: '/faculties', departments: '/departments', specialties: '/specialties',
   teachers: '/teachers', subjects: '/subjects', groups: '/groups', buildings: '/buildings',
   rooms: '/rooms', users: '/users', audit: '/audit', loads: '/workloads',
-  roomPermissions: '/room-permissions',
+  roomPermissions: '/room-permissions', teacherConstraints: '/teacher-constraints',
   // 'requests' va 'schedule' — backendda boshqacha (engine API), hozircha lokal/bo'sh
 }
 

@@ -37,7 +37,7 @@ export function anneal(ctx, occ, opts = {}) {
     if ((iters & 1023) === 0 && Date.now() - t0 > maxMs) break // vaqt byudjeti
 
     const ev = ctx.events[randInt(n)]
-    if (ev.rooms.length === 0) continue
+    if (ev.rooms.length === 0 || ev.slots.length === 0) continue
 
     // Potok: shu event bir nechta guruhga tegishli bo'lishi mumkin — ko'chirilsa
     // BARCHA shu guruhlarning narxi bir vaqtda o'zgaradi, hammasi yig'indiga qo'shiladi

@@ -76,6 +76,7 @@ model Teacher {
   roomPermissions RoomPermission[]
   teachingRequests TeachingRequest[]
   users           User[]
+  constraint      TeacherConstraint?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 }
@@ -157,6 +158,19 @@ model RoomPermission {
   specialty   Specialty? @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
   specialtyId Int?
   createdAt   DateTime   @default(now())
+}
+
+// O'qituvchi istisnosi (jadval generatsiyasida qat'iy hisobga olinadi — loadData.js):
+// qaysi kunlarda dars qo'yilmasin (blockedDays) va/yoki FAQAT qaysi paralarga qo'yilsin
+// (allowedPairs). Ikkisi ham bo'sh bo'lsa — cheklovsiz. Har o'qituvchida bittadan (unique).
+model TeacherConstraint {
+  id           Int      @id @default(autoincrement())
+  teacher      Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  teacherId    Int      @unique
+  blockedDays  String? // JSON massiv, kun indekslari 0..4 (Dushanba..Juma), masalan "[0,4]"
+  allowedPairs String? // JSON massiv, para raqamlari 1..6, masalan "[3,4,5]" — bo'sh = cheklovsiz
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 // ─────────────────────────── Ish yuklamasi (engine kirishi) ───────────────────────────

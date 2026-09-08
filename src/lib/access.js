@@ -16,14 +16,14 @@ const WRITE = {
   faculties: [], departments: [], buildings: [],
   specialties: [OPERATOR], groups: [OPERATOR],
   teachers: [MUDIR],
-  subjects: [OPERATOR, MUDIR], rooms: [OPERATOR], 'room-permissions': [OPERATOR],
+  subjects: [OPERATOR, MUDIR], rooms: [OPERATOR], 'room-permissions': [OPERATOR], 'teacher-constraints': [OPERATOR],
   workloads: [OPERATOR, MUDIR],
   users: [OPERATOR, MUDIR], // delegatsiya: o'z doirasida akkaunt yaratadi
 }
 // store'dagi kolleksiya nomi ↔ backend resurs nomi
 const ALIAS = { loads: 'workloads' }
 // resurs/kolleksiya → "bo'lim" kaliti (cheklovlar shu kalitlar bilan)
-const SECTION = { loads: 'loads', workloads: 'loads', buildings: 'rooms', 'room-permissions': 'rooms' }
+const SECTION = { loads: 'loads', workloads: 'loads', buildings: 'rooms', 'room-permissions': 'rooms', 'teacher-constraints': 'schedule' }
 export const sectionOf = (key) => SECTION[key] ?? key
 
 // Menyu/route ko'rinishi: har yo'l qaysi rollarga ko'rinadi

@@ -46,6 +46,19 @@ export const schemas = {
 
   roomPermission: z.object({ roomId: reqInt, teacherId: optInt, groupId: optInt, specialtyId: optInt }),
 
+  // blockedDays/allowedPairs — massiv kelsa JSON-string'ga o'giriladi (Room.features bilan bir xil naqsh)
+  teacherConstraint: z.object({
+    teacherId: reqInt,
+    blockedDays: z.preprocess(
+      (v) => (v == null || v === '' || (Array.isArray(v) && v.length === 0) ? null : (typeof v === 'string' ? v : JSON.stringify(v))),
+      z.string().nullable(),
+    ),
+    allowedPairs: z.preprocess(
+      (v) => (v == null || v === '' || (Array.isArray(v) && v.length === 0) ? null : (typeof v === 'string' ? v : JSON.stringify(v))),
+      z.string().nullable(),
+    ),
+  }),
+
   // groupIds — potok: bir dars bir nechta guruhga birga o'tilishi mumkin (kamida 1 ta)
   // type — dars turi: bitta fan alohida ma'ruza/seminar/amaliy yuklamalariga bo'linishi mumkin;
   // jadval tuzishda ma'ruza birinchi, keyin seminar, keyin amaliy tartibida joylanadi

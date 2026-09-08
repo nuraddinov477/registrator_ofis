@@ -33,6 +33,7 @@ const resources = [
   { path: 'buildings', model: 'building', label: 'Bino', schema: schemas.building, include: { faculty: true } },
   { path: 'rooms', model: 'room', label: 'Xona', schema: schemas.room, include: { building: true } },
   { path: 'room-permissions', model: 'roomPermission', label: 'Xona ruxsati', schema: schemas.roomPermission, include: { room: true, teacher: true, group: true, specialty: true } },
+  { path: 'teacher-constraints', model: 'teacherConstraint', label: "O'qituvchi istisnosi", schema: schemas.teacherConstraint, include: { teacher: true } },
   // 'workloads' — bu yerda EMAS: guruh ko'p-ko'pga (potok), o'z marshruti bor (pastda)
   // Foydalanuvchilar: faqat Super Admin ko'radi va o'zgartiradi, parol hech qachon qaytarilmaydi
   { path: 'users', model: 'user', label: 'Foydalanuvchi', schema: schemas.user, sanitize: stripPassword, transform: userTransform },

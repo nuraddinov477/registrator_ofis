@@ -32,6 +32,7 @@ export const WRITE = {
   subjects: [OPERATOR, MUDIR],
   rooms: [OPERATOR],
   'room-permissions': [OPERATOR],
+  'teacher-constraints': [OPERATOR],
   workloads: [OPERATOR, MUDIR],
   users: [OPERATOR, MUDIR],
 }
@@ -40,7 +41,7 @@ export const WRITE = {
 const READ_ROLES = { users: [OPERATOR, MUDIR] } // (+ Super doim)
 
 // Resursni "bo'lim" kalitiga moslash (cheklovlar shu kalitlar bilan ishlaydi)
-const SECTION = { workloads: 'loads', buildings: 'rooms', 'room-permissions': 'rooms' }
+const SECTION = { workloads: 'loads', buildings: 'rooms', 'room-permissions': 'rooms', 'teacher-constraints': 'schedule' }
 export const sectionOf = (resource) => SECTION[resource] ?? resource
 
 // Yaratuvchi qaysi rollarni bera oladi (delegatsiya ierarxiyasi)
