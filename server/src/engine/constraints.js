@@ -6,10 +6,10 @@ export const TYPE_RANK = { "Maʼruza": 0, Seminar: 1, Amaliy: 2 }
 
 // Yumshoq cheklash vaznlari (sozlanadigan). Qattiq cheklash Occupancy.hard orqali.
 export const WEIGHTS = {
-  teacherGap: 6, // o'qituvchi "derazasi" (eng og'riqli)
-  groupGap: 3, // guruh oynalari
+  teacherGap: 7, // o'qituvchi "derazasi" — bo'sh keyin band, keyin yana bo'sh bo'lib qolmasin
+  groupGap: 7, // guruh (talaba) "derazasi" — o'qituvchi bilan bir xil darajada muhim
   consecutive: 3, // 4 tadan ortiq ketma-ket dars (har ortig'i)
-  subjectSpread: 25, // bir fan bir kunda ikkinchi marta kelsa (ketma-ket bo'lsa ham, orada tanaffus bo'lsa ham) — boshqa kunga ko'chirilishi kerak
+  subjectSpread: 100, // bir fan bir kunda ikkinchi marta kelsa (ketma-ket bo'lsa ham, orada tanaffus bo'lsa ham) — boshqa kunga ko'chirilishi kerak. Vazn ATAYIN baland: teacherGap/lonePair/groupDayMin kabi "kunlarni siqish" tendensiyasidan HAR DOIM ustun turishi kerak (bir fan kuni muhimroq)
   subjectConsecutiveDays: 18, // bir fan ketma-ket kunlarga tushsa (masalan Dush+Sesh) — 1 kun oralik yetarli, ortiqcha tanaffus shart emas
   subjectAdjacent: 20, // ikki XIL fan bir kunda ketma-ket juftlikda kelsa (masalan 2-juftlik va 3-juftlik) — talabalarga og'ir, ayniqsa til fanlarida
   subjectTypeOrder: 16, // bir fanning ma'ruza/seminar/amaliy turlari haftada noto'g'ri tartibda kelsa (masalan seminar ma'ruzadan oldin) — har teskari juftlik uchun
