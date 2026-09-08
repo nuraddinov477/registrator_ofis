@@ -76,7 +76,7 @@ scheduleRouter.get('/runs/:id/grid', asyncHandler(async (req, res) => {
     grid[e.pair - 1][e.day] = {
       id: e.id,
       subject: sName.get(e.subjectId), teacher: tName.get(e.teacherId), room: rName.get(e.roomId),
-      subjectId: e.subjectId, teacherId: e.teacherId, roomId: e.roomId,
+      subjectId: e.subjectId, teacherId: e.teacherId, roomId: e.roomId, type: e.type,
     }
   }
   res.json({ days: DAY_NAMES, grid })
@@ -100,7 +100,7 @@ scheduleRouter.get('/runs/:id/teacher-grid', asyncHandler(async (req, res) => {
 
   const grid = Array.from({ length: PAIRS }, () => Array(DAYS).fill(null))
   for (const e of entries) {
-    grid[e.pair - 1][e.day] = { subject: sName.get(e.subjectId), group: gName.get(e.groupId), room: rName.get(e.roomId) }
+    grid[e.pair - 1][e.day] = { subject: sName.get(e.subjectId), group: gName.get(e.groupId), room: rName.get(e.roomId), type: e.type }
   }
   res.json({ days: DAY_NAMES, grid })
 }))
@@ -169,14 +169,14 @@ scheduleRouter.post('/runs/:id/entries', requireRole('Super Admin'), asyncHandle
   const runId = Number(req.params.id)
   const run = await prisma.schedulingRun.findUnique({ where: { id: runId } })
   if (!run) return res.status(404).json({ error: 'Run topilmadi' })
-  const { groupId, subjectId, teacherId, roomId, day, pair } = req.body || {}
+  const { groupId, subjectId, teacherId, roomId, day, pair, type } = req.body || {}
   for (const [k, v] of Object.entries({ groupId, subjectId, teacherId, roomId })) {
     if (!Number.isInteger(v)) return res.status(400).json({ error: `Maydon kerak: ${k}` })
   }
   if (!isValidSlot(day, pair)) return res.status(400).json({ error: "Kun/juftlik noto'g'ri" })
   const reasons = await slotConflicts({ runId, day, pair, groupId, teacherId, roomId })
   if (reasons.length) return res.status(409).json({ error: conflictMsg(reasons) })
-  const entry = await prisma.scheduleEntry.create({ data: { runId, groupId, subjectId, teacherId, roomId, day, pair } })
+  const entry = await prisma.scheduleEntry.create({ data: { runId, groupId, subjectId, teacherId, roomId, day, pair, type: type || 'Amaliy' } })
   await audit("Jadvalga dars qo'shildi", `run #${runId} · ${DAY_NAMES[day]} ${pair}-juft`, req)
   res.status(201).json(entry)
 }))
@@ -194,6 +194,7 @@ scheduleRouter.put('/runs/:id/entries/:entryId', requireRole('Super Admin'), asy
     roomId: req.body?.roomId ?? existing.roomId,
     day: req.body?.day ?? existing.day,
     pair: req.body?.pair ?? existing.pair,
+    type: req.body?.type ?? existing.type,
   }
   if (!isValidSlot(merged.day, merged.pair)) return res.status(400).json({ error: "Kun/juftlik noto'g'ri" })
   const reasons = await slotConflicts({ runId, ...merged, excludeId: entryId })

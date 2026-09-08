@@ -57,6 +57,7 @@ export async function loadData(prisma, semester = 1) {
         groupIds,
         teacherId: w.teacherId,
         subjectId: w.subjectId,
+        type: w.type || 'Amaliy', // Maʼruza / Seminar / Amaliy — haftalik tartib uchun (constraints.js)
         groupNames: wgroups.map((g) => g.name),
         teacherName: w.teacher?.fullName,
         subjectName: w.subject?.name,

@@ -171,6 +171,10 @@ model Workload {
   // haftalik_soatlar = haftadagi juftliklar soni (engine shuncha "event" yaratadi) — guruhlar
   // soniga qaramasdan BIR MARTA sanaladi (potok — bir dars, bir nechta guruh birga tinglaydi)
   weeklyHours Int              @default(2)
+  // Dars turi: Maʼruza / Seminar / Amaliy — bitta fan bir nechta turdagi yuklamaga bo'linishi
+  // mumkin (masalan alohida ma'ruza va alohida seminar yuklamasi). Jadval tuzishda shu tur
+  // bo'yicha tartib saqlanadi: ma'ruza birinchi, keyin seminar, keyin amaliy (constraints.js)
+  type        String           @default("Amaliy")
   semester    Int              @default(1)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
@@ -210,6 +214,7 @@ model ScheduleEntry {
   roomId    Int
   day       Int // 0..4 (Dushanba..Juma)
   pair      Int // 1..6
+  type      String @default("Amaliy") // Maʼruza / Seminar / Amaliy — Workload.type'dan ko'chiriladi
 
   @@index([runId])
 }

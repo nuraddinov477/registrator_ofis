@@ -119,7 +119,7 @@ export default function Schedule() {
     setEditCell({ id: cell?.id ?? null, day: dayIndex, pair: pairIndex + 1 })
     setEditForm({
       subjectId: cell?.subjectId ?? '', teacherId: cell?.teacherId ?? '', roomId: cell?.roomId ?? '',
-      day: dayIndex, pair: pairIndex + 1,
+      day: dayIndex, pair: pairIndex + 1, type: cell?.type ?? 'Amaliy',
     })
   }
   const saveCell = async () => {
@@ -129,7 +129,7 @@ export default function Schedule() {
     setSaving(true); setEditErr('')
     const body = {
       groupId: Number(groupId), subjectId: Number(editForm.subjectId), teacherId: Number(editForm.teacherId),
-      roomId: Number(editForm.roomId), day: Number(editForm.day), pair: Number(editForm.pair),
+      roomId: Number(editForm.roomId), day: Number(editForm.day), pair: Number(editForm.pair), type: editForm.type || 'Amaliy',
     }
     try {
       if (editCell.id) await api(`/schedule/runs/${runId}/entries/${editCell.id}`, { method: 'PUT', body })
@@ -290,7 +290,14 @@ export default function Schedule() {
                       className={`group h-16 border-b border-l border-slate-200 px-1.5 py-1.5 align-top dark:border-slate-800 ${isSuper ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40' : ''}`}>
                       {c ? (
                         <div className={`rounded-md border px-2 py-1 text-xs ${DAY_COLORS[di % DAY_COLORS.length]}`}>
-                          <div className="font-semibold">{c.subject || 'Fan'}</div>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold">{c.subject || 'Fan'}</span>
+                            {c.type && c.type !== 'Amaliy' && (
+                              <span className="shrink-0 rounded px-1 text-[10px] font-medium opacity-80" title={c.type}>
+                                {c.type === 'Maʼruza' ? "Ma'r" : 'Sem'}
+                              </span>
+                            )}
+                          </div>
                           <div className="opacity-80">{c.teacher || c.group || ''}</div>
                           {c.room && <div className="opacity-70">{c.room}</div>}
                         </div>
@@ -349,6 +356,11 @@ export default function Schedule() {
               <SearchableSelect value={editForm.roomId} onChange={(v) => setEditForm({ ...editForm, roomId: v })}
                 options={refs.rooms.map((r) => ({ value: r.id, label: r.name }))}
                 emptyLabel="— tanlang —" placeholder="Xona qidirish..." />
+            </Field>
+            <Field label="Dars turi">
+              <select className="input" value={editForm.type || 'Amaliy'} onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}>
+                {['Maʼruza', 'Seminar', 'Amaliy'].map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Kun">

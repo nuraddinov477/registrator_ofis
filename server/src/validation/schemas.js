@@ -47,9 +47,12 @@ export const schemas = {
   roomPermission: z.object({ roomId: reqInt, teacherId: optInt, groupId: optInt, specialtyId: optInt }),
 
   // groupIds — potok: bir dars bir nechta guruhga birga o'tilishi mumkin (kamida 1 ta)
+  // type — dars turi: bitta fan alohida ma'ruza/seminar/amaliy yuklamalariga bo'linishi mumkin;
+  // jadval tuzishda ma'ruza birinchi, keyin seminar, keyin amaliy tartibida joylanadi
   workload: z.object({
     groupIds: z.preprocess((v) => (Array.isArray(v) ? v : v == null ? [] : [v]), z.array(reqInt).min(1)),
     teacherId: reqInt, subjectId: reqInt, weeklyHours: intDef(2), semester: intDef(1),
+    type: z.preprocess((v) => (v === '' || v == null ? 'Amaliy' : v), z.enum(['Maʼruza', 'Seminar', 'Amaliy'])),
   }),
 
   // password: yaratishda/parolni o'zgartirishda beriladi; bo'sh bo'lsa passwordHash tegilmaydi

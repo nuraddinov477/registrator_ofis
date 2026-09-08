@@ -54,7 +54,7 @@ export async function solve(prisma, options = {}) {
     .filter((e) => e.slot >= 0 && e.room >= 0)
     .flatMap((e) => e.groupIds.map((groupId) => ({
       groupId, teacherId: e.teacherId, subjectId: e.subjectId,
-      roomId: e.room, day: dayOf(e.slot), pair: pairOf(e.slot),
+      roomId: e.room, day: dayOf(e.slot), pair: pairOf(e.slot), type: e.type,
     })))
 
   return { ctx, semester, report, greedy, anneal: annealStats, entries, events: ctx.events.length }
@@ -67,7 +67,7 @@ export function buildGroupGrid(ctx, groupId) {
   for (const e of evs) {
     if (e.slot < 0) continue
     grid[pairOf(e.slot) - 1][dayOf(e.slot)] = {
-      subject: e.subjectName, teacher: e.teacherName, room: e.room,
+      subject: e.subjectName, teacher: e.teacherName, room: e.room, type: e.type,
     }
   }
   return grid

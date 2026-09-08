@@ -1,5 +1,9 @@
 import { DAYS, dayOf, pairOf } from './timeslots.js'
 
+// Dars turi tartibi: ma'ruza → seminar → amaliy (talabaga mantiqan avval nazariya,
+// keyin amaliyot). Workload.type / event.type shu qiymatlardan biri (default "Amaliy").
+export const TYPE_RANK = { "Maʼruza": 0, Seminar: 1, Amaliy: 2 }
+
 // Yumshoq cheklash vaznlari (sozlanadigan). Qattiq cheklash Occupancy.hard orqali.
 export const WEIGHTS = {
   teacherGap: 6, // o'qituvchi "derazasi" (eng og'riqli)
@@ -8,6 +12,7 @@ export const WEIGHTS = {
   subjectSpread: 25, // bir fan bir kunda takror — talabalar uchun eng noqulayi, o'qituvchi qulayligidan (teacherGap/lonePair) ustun turishi kerak
   subjectConsecutiveDays: 18, // bir fan ketma-ket kunlarga tushsa (masalan Dush+Sesh) — 1 kun oralik yetarli, ortiqcha tanaffus shart emas
   subjectAdjacent: 20, // ikki XIL fan bir kunda ketma-ket juftlikda kelsa (masalan 2-juftlik va 3-juftlik). Xuddi shu fanning ikki juftligi (ma'ruza+seminar) ketma-ket kelishi jarimasiz — bu tabiiy juftlik
+  subjectTypeOrder: 16, // bir fanning ma'ruza/seminar/amaliy turlari haftada noto'g'ri tartibda kelsa (masalan seminar ma'ruzadan oldin) — har teskari juftlik uchun
   morning: 1, // qiyin fan kechki juftlikda
   groupBalance: 1, // guruh yukini kunlarga teng taqsimlash
   lonePair: 8, // o'qituvchi kuni 1 juftlikdan iborat — 1 soat uchun qatnamasin
@@ -101,6 +106,28 @@ export function groupCost(groupEvents, W = WEIGHTS) {
     const sorted = [...days].sort((a, b) => a - b)
     for (let i = 1; i < sorted.length; i++) {
       if (sorted[i] - sorted[i - 1] === 1) cost += W.subjectConsecutiveDays
+    }
+  }
+
+  // Dars turi tartibi: bir fanning ma'ruza/seminar/amaliy darslari HAFTA davomida
+  // to'g'ri tartibda kelsin (avval ma'ruza, keyin seminar, keyin amaliy). Slot raqami
+  // (day*PAIRS+pair) haftadagi xronologik tartibga to'g'ridan-to'g'ri mos keladi.
+  const bySubjectTyped = new Map() // subjectId -> [{ slot, rank }]
+  for (const e of groupEvents) {
+    if (e.slot < 0) continue
+    const rank = TYPE_RANK[e.type]
+    if (rank == null) continue
+    if (!bySubjectTyped.has(e.subjectId)) bySubjectTyped.set(e.subjectId, [])
+    bySubjectTyped.get(e.subjectId).push({ slot: e.slot, rank })
+  }
+  for (const evs of bySubjectTyped.values()) {
+    for (let i = 0; i < evs.length; i++) {
+      for (let j = i + 1; j < evs.length; j++) {
+        const a = evs[i], b = evs[j]
+        if (a.rank === b.rank) continue
+        const earlier = a.slot < b.slot ? a : b, later = a.slot < b.slot ? b : a
+        if (earlier.rank > later.rank) cost += W.subjectTypeOrder // teskari tartib
+      }
     }
   }
 

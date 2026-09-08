@@ -22,7 +22,7 @@ export function Loads() {
   const writable = canWrite('loads')
 
   const openAdd = () => { setEditing(null); setForm({}); setErr(''); setOpen(true) }
-  const openEdit = (l) => { setEditing(l); setForm({ teacherId: l.teacherId, subjectId: l.subjectId, groupIds: l.groups?.map((x) => x.groupId) || [], semester: l.semester, weeklyHours: l.weeklyHours }); setErr(''); setOpen(true) }
+  const openEdit = (l) => { setEditing(l); setForm({ teacherId: l.teacherId, subjectId: l.subjectId, groupIds: l.groups?.map((x) => x.groupId) || [], semester: l.semester, weeklyHours: l.weeklyHours, type: l.type || 'Amaliy' }); setErr(''); setOpen(true) }
   const save = async (e) => {
     e.preventDefault()
     setErr('')
@@ -38,6 +38,7 @@ export function Loads() {
   }
   const nm = (coll, id) => db.get(coll).find((x) => x.id === Number(id))?.name || db.get(coll).find((x) => x.id === Number(id))?.fullName || '—'
   const filteredLoads = loads.filter((l) => Object.values(l).join(' ').toLowerCase().includes(q.toLowerCase()))
+  const typeColor = (t) => (t === 'Maʼruza' ? 'blue' : t === 'Seminar' ? 'amber' : 'gray')
 
   return (
     <div>
@@ -55,7 +56,7 @@ export function Loads() {
         <TeacherLoadsView loads={filteredLoads} nm={nm} />
       ) : (
       <Table
-        columns={writable ? ['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami', 'Amallar'] : ['Oʻqituvchi', 'Fan', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami']}
+        columns={writable ? ['Oʻqituvchi', 'Fan', 'Turi', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami', 'Amallar'] : ['Oʻqituvchi', 'Fan', 'Turi', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami']}
         rows={filteredLoads}
         empty="Maʼlumot topilmadi"
         renderRow={(l) => {
@@ -69,6 +70,7 @@ export function Loads() {
           <tr key={l.id} className="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
             <td className="px-4 py-3">{nm('teachers', l.teacherId)}</td>
             <td className="px-4 py-3">{nm('subjects', l.subjectId)}</td>
+            <td className="px-4 py-3"><Badge color={typeColor(l.type)}>{l.type || 'Amaliy'}</Badge></td>
             <td className="px-4 py-3">{lgroups.map((x) => x.group?.name).filter(Boolean).join(', ') || '—'}</td>
             <td className="px-4 py-3">{l.semester}</td>
             <td className="px-4 py-3">{l.weeklyHours ?? '—'}</td>
@@ -103,7 +105,12 @@ export function Loads() {
           </Field>
           <Field label="Semestr"><input className="input" type="number" value={form.semester || ''} onChange={(e) => setForm({ ...form, semester: e.target.value })} /></Field>
           <Field label="Fan soati (haftalik)"><input className="input" type="number" value={form.weeklyHours ?? ''} onChange={(e) => setForm({ ...form, weeklyHours: e.target.value })} /></Field>
-          <p className="text-xs text-slate-400">Fan soati guruhlar soniga ko'paytirilmaydi (bir dars, birga o'tiladi). Reyting — tanlangan barcha guruhlar talabalari yig'indisidan avtomatik hisoblanadi (× 0.8).</p>
+          <Field label="Dars turi">
+            <select className="input" value={form.type || 'Amaliy'} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+              {['Maʼruza', 'Seminar', 'Amaliy'].map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </Field>
+          <p className="text-xs text-slate-400">Fan soati guruhlar soniga ko'paytirilmaydi (bir dars, birga o'tiladi). Reyting — tanlangan barcha guruhlar talabalari yig'indisidan avtomatik hisoblanadi (× 0.8). Bitta fan alohida ma'ruza va seminar yuklamasiga bo'linishi mumkin — jadval tuzishda ma'ruza doim seminardan oldin, seminar amaliydan oldin joylashtiriladi.</p>
           {err && <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">{err}</div>}
           <div className="flex justify-end gap-2 pt-2"><button type="button" className="btn-ghost" onClick={() => setOpen(false)}>Bekor</button><button type="submit" className="btn-primary">Saqlash</button></div>
         </form>
@@ -144,8 +151,9 @@ function TeacherLoadsView({ loads, nm }) {
           <div className="divide-y divide-slate-100 dark:divide-slate-800/60">
             {t.items.map((l) => (
               <div key={l.id} className="flex items-center justify-between py-1.5 text-sm">
-                <span className="text-slate-600 dark:text-slate-300">
+                <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
                   {nm('subjects', l.subjectId)}
+                  <Badge color={l.type === 'Maʼruza' ? 'blue' : l.type === 'Seminar' ? 'amber' : 'gray'}>{l.type || 'Amaliy'}</Badge>
                   <span className="text-slate-400"> — {(l.groups || []).map((x) => x.group?.name).filter(Boolean).join(', ') || '—'}</span>
                 </span>
                 <span className="shrink-0 text-slate-400">{l.weeklyHours ?? '—'} soat</span>

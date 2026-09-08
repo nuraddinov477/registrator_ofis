@@ -1,5 +1,6 @@
 import { Occupancy } from './occupancy.js'
 import { dayOf } from './timeslots.js'
+import { TYPE_RANK } from './constraints.js'
 
 // Ochko'z (greedy) konstruksiya — DSATUR uslubi: eng "qiyin" eventlar birinchi.
 // Maqsad: qattiq cheklovlarni buzmaydigan boshlang'ich jadval (keyin SA yaxshilaydi).
@@ -27,19 +28,39 @@ export function greedyConstruct(ctx) {
     return false
   }
   const hasBadDay = (ev, slot) => ev.groupIds.some((gid) => isBadDay(gid, ev.subjectId, dayOf(slot)))
+
+  // Dars turi tartibi (ma'ruza→seminar→amaliy): bir fan+guruh uchun allaqachon
+  // joylangan boshqa turdagi darslarga nisbatan kandidat slot noto'g'ri tomonda
+  // bo'lsa (masalan seminar ma'ruzadan oldinroq slotga tushsa) — bu "yomon" hisoblanadi.
+  const typeSlots = new Map() // "groupId|subjectId" -> [{ rank, slot }]
+  const hasTypeViolation = (ev, slot) => {
+    const rank = TYPE_RANK[ev.type]
+    if (rank == null) return false
+    return ev.groupIds.some((gid) => {
+      const placed = typeSlots.get(`${gid}|${ev.subjectId}`)
+      if (!placed) return false
+      return placed.some((p) => (p.rank < rank && p.slot > slot) || (p.rank > rank && p.slot < slot))
+    })
+  }
   const markUsed = (ev) => {
     const day = dayOf(ev.slot)
+    const rank = TYPE_RANK[ev.type]
     for (const gid of ev.groupIds) {
       const key = `${gid}|${ev.subjectId}`
       if (!usedDays.has(key)) usedDays.set(key, new Set())
       usedDays.get(key).add(day)
+      if (rank != null) {
+        if (!typeSlots.has(key)) typeSlots.set(key, [])
+        typeSlots.get(key).push({ rank, slot: ev.slot })
+      }
     }
   }
 
   for (const ev of order) {
     if (ev.rooms.length === 0) continue // nomzod xona yo'q — joylab bo'lmaydi
-    let best = null // { slot, room, conflicts } — zaxira (qattiq konfliktsiz, lekin kun jihatidan yomon bo'lishi mumkin)
-    let goodDay = null // qattiq konfliktsiz VA fan/guruh uchun kun-toqnashuvsiz — topilsa darhol tanlanadi
+    let best = null // { slot, room, conflicts } — zaxira (qattiq konfliktsiz, lekin kun/tur jihatidan yomon bo'lishi mumkin)
+    let ok = null // qattiq konfliktsiz VA kun-toqnashuvsiz, lekin tur-tartibi buzilishi mumkin
+    let goodDay = null // hammasi to'g'ri — topilsa darhol tanlanadi
 
     for (const slot of ev.slots) {
       // guruh(lar) va o'qituvchi shu slotda band bo'lsa — bu slot foydasiz, o'tkazib yuboramiz
@@ -49,8 +70,11 @@ export function greedyConstruct(ctx) {
         // bo'sh xona qidiramiz; topilsa — konfliktsiz joylashuv
         const room = ev.rooms.find((r) => occ.roomFree(r, slot))
         if (room != null) {
-          if (!hasBadDay(ev, slot)) { goodDay = { slot, room, conflicts: 0 }; break }
-          if (!best) best = { slot, room, conflicts: 0 }
+          const candidate = { slot, room, conflicts: 0 }
+          const badDay = hasBadDay(ev, slot)
+          if (!badDay && !hasTypeViolation(ev, slot)) { goodDay = candidate; break }
+          if (!badDay && !ok) ok = candidate
+          if (!best) best = candidate
         }
       }
       // konfliktsiz topilmasa — eng kam konfliktli variantni eslab qolamiz
@@ -61,7 +85,7 @@ export function greedyConstruct(ctx) {
       }
     }
 
-    const chosen = goodDay || best
+    const chosen = goodDay || ok || best
     ev.slot = chosen.slot
     ev.room = chosen.room
     occ.place(ev)
