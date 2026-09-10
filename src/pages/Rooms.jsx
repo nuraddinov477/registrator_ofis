@@ -13,6 +13,8 @@ export default function Rooms() {
   const buildings = useCollection('buildings')
   const rooms = useCollection('rooms')
   const faculties = useCollection('faculties')
+  const groups = useCollection('groups')
+  const roomPerms = useCollection('roomPermissions')
   const [tab, setTab] = useState('buildings')
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
@@ -21,6 +23,9 @@ export default function Rooms() {
   const [fBuilding, setFBuilding] = useState('') // xona filtri: bino
   const [fType, setFType] = useState('')          // xona filtri: turi
   const [fCap, setFCap] = useState('')            // xona filtri: minimal sig'im
+  const [fFaculty, setFFaculty] = useState('')    // xona filtri: fakultet → kurs → guruh kaskadi
+  const [fCourse, setFCourse] = useState('')
+  const [fGroup, setFGroup] = useState('')        // tanlansa — faqat shu guruhga ruxsat berilgan xonalar
   const [customFeature, setCustomFeature] = useState('') // ro'yxatda yo'q xususiyat uchun qo'lda kiritish
   const [permRoom, setPermRoom] = useState(null) // ruxsatlar oynasi ochilgan xona (maxsus)
 
@@ -30,13 +35,33 @@ export default function Rooms() {
   const loading = useIsLoading(coll)
   const failed = useLoadFailed(coll)
   const roomTypes = [...new Set(rooms.map((r) => r.kind).filter(Boolean))]
+
+  // Fakultet → kurs → guruh kaskadi (xona filtri uchun)
+  const facGroups = fFaculty ? groups.filter((g) => String(g.facultyId) === String(fFaculty)) : groups
+  const courseOpts = [...new Set(facGroups.map((g) => g.course))].sort((a, b) => a - b)
+  const groupOpts = fCourse ? facGroups.filter((g) => String(g.course) === String(fCourse)) : facGroups
+  const selGroup = fGroup ? groups.find((g) => g.id === Number(fGroup)) : null
+  // Shu guruhga ruxsat berilgan xona id'lari (guruh yoki uning yo'nalishi orqali)
+  const groupRoomIds = selGroup
+    ? new Set(roomPerms.filter((p) => p.groupId === selGroup.id || (selGroup.specialtyId != null && p.specialtyId === selGroup.specialtyId)).map((p) => p.roomId))
+    : null
+
   const list = (isB ? buildings : rooms).filter((r) => {
     if (q && !Object.values(r).join(' ').toLowerCase().includes(q.toLowerCase())) return false
     if (!isB && fBuilding && Number(r.buildingId) !== Number(fBuilding)) return false
     if (!isB && fType && r.kind !== fType) return false
     if (!isB && fCap && Number(r.capacity) < Number(fCap)) return false
+    if (!isB && groupRoomIds && !groupRoomIds.has(r.id)) return false
     return true
   })
+
+  // Xona → biriktirilgan guruh/yo'nalish/o'qituvchi nomlari (jadval ustuni uchun)
+  const roomAssignees = (roomId) => roomPerms.filter((p) => p.roomId === roomId).map((p) => {
+    if (p.groupId != null) return { name: p.group?.name || groups.find((g) => g.id === p.groupId)?.name || `guruh #${p.groupId}`, ex: !!p.exclusive }
+    if (p.specialtyId != null) return { name: p.specialty?.name || `yo'nalish #${p.specialtyId}`, ex: false }
+    if (p.teacherId != null) return { name: p.teacher?.fullName || `o'qituvchi #${p.teacherId}`, ex: false }
+    return null
+  }).filter(Boolean)
 
   const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '' } : { name: '', buildingId: '', capacity: 30, kind: 'Maʼruza', type: 'umumiy', features: [] }); setCustomFeature(''); setOpen(true) }
   const openEdit = (r) => { setEditing(r); setForm(isB ? r : { ...r, features: parseFeatures(r) }); setCustomFeature(''); setOpen(true) }
@@ -80,22 +105,46 @@ export default function Rooms() {
       </div>
 
       {!isB && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <div className="w-auto min-w-[12rem]">
-            <SearchableSelect value={fBuilding} onChange={setFBuilding}
-              options={buildings.map((b) => ({ value: b.id, label: b.name }))}
-              emptyLabel="Barcha binolar" placeholder="Bino qidirish..." />
+        <div className="mb-4 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="w-auto min-w-[12rem]">
+              <SearchableSelect value={fBuilding} onChange={setFBuilding}
+                options={buildings.map((b) => ({ value: b.id, label: b.name }))}
+                emptyLabel="Barcha binolar" placeholder="Bino qidirish..." />
+            </div>
+            <select className="input h-9 w-auto py-1" value={fType} onChange={(e) => setFType(e.target.value)}>
+              <option value="">Barcha turlar</option>
+              {roomTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <input type="number" min="0" className="input h-9 w-36 py-1" placeholder="Sigʻim ≥" value={fCap}
+              onChange={(e) => setFCap(e.target.value)} title="Minimal sigʻim (o'rin soni)" />
           </div>
-          <select className="input h-9 w-auto py-1" value={fType} onChange={(e) => setFType(e.target.value)}>
-            <option value="">Barcha turlar</option>
-            {roomTypes.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <input type="number" min="0" className="input h-9 w-36 py-1" placeholder="Sigʻim ≥" value={fCap}
-            onChange={(e) => setFCap(e.target.value)} title="Minimal sigʻim (o'rin soni)" />
-          {(fBuilding || fType || fCap) && (
-            <button className="text-sm text-slate-500 hover:text-brand" onClick={() => { setFBuilding(''); setFType(''); setFCap('') }}>Tozalash</button>
-          )}
-          <span className="text-xs text-slate-400">{list.length} ta xona</span>
+          {/* Fakultet → Kurs → Guruh: tanlangan guruhga ruxsat berilgan xonalarni ko'rsatadi */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate-400">Guruh bo'yicha:</span>
+            <div className="w-auto min-w-[11rem]">
+              <SearchableSelect value={fFaculty} onChange={(v) => { setFFaculty(v); setFCourse(''); setFGroup('') }}
+                options={faculties.map((f) => ({ value: f.id, label: f.name }))} emptyLabel="Barcha fakultetlar" placeholder="Fakultet..." />
+            </div>
+            <div className="w-auto min-w-[8rem]">
+              <SearchableSelect value={fCourse} onChange={(v) => { setFCourse(v); setFGroup('') }}
+                options={courseOpts.map((c) => ({ value: c, label: `${c}-kurs` }))} emptyLabel="Barcha kurslar" placeholder="Kurs..." />
+            </div>
+            <div className="w-auto min-w-[11rem]">
+              <SearchableSelect value={fGroup} onChange={setFGroup}
+                options={groupOpts.map((g) => ({ value: g.id, label: g.name }))} emptyLabel="— guruh —" placeholder="Guruh..." />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {(fBuilding || fType || fCap || fFaculty || fCourse || fGroup) && (
+              <button className="text-sm text-slate-500 hover:text-brand"
+                onClick={() => { setFBuilding(''); setFType(''); setFCap(''); setFFaculty(''); setFCourse(''); setFGroup('') }}>Tozalash</button>
+            )}
+            <span className="text-xs text-slate-400">
+              {list.length} ta xona
+              {selGroup && ` — "${selGroup.name}" guruhiga ruxsat berilgan`}
+            </span>
+          </div>
         </div>
       )}
 
@@ -103,7 +152,7 @@ export default function Rooms() {
         <DataState loading={loading} onRetry={() => retry(coll)} />
       ) : (
       <Table
-        columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil', 'Fakultet'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Kirish', 'Xususiyatlar']), ...(writable ? ['Amallar'] : [])]}
+        columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil', 'Fakultet'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Kirish', 'Biriktirilgan', 'Xususiyatlar']), ...(writable ? ['Amallar'] : [])]}
         rows={list}
         renderRow={(r) => (
           <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/30">
@@ -120,6 +169,13 @@ export default function Rooms() {
               <td className="px-4 py-3">{r.kind ? <Badge>{r.kind}</Badge> : <span className="text-slate-400">—</span>}</td>
               <td className="px-4 py-3">
                 <Badge color={r.type === 'maxsus' ? 'amber' : 'green'}>{r.type === 'maxsus' ? 'Maxsus' : 'Ochiq'}</Badge>
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex flex-wrap gap-1">
+                  {roomAssignees(r.id).length
+                    ? roomAssignees(r.id).map((a, i) => <Badge key={i} color={a.ex ? 'amber' : 'blue'}>{a.name}{a.ex ? ' · faqat' : ''}</Badge>)
+                    : <span className="text-slate-400">{r.type === 'maxsus' ? 'ruxsat yo‘q' : 'hammaga ochiq'}</span>}
+                </div>
               </td>
               <td className="px-4 py-3">
                 <div className="flex flex-wrap gap-1">
