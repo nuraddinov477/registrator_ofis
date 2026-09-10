@@ -15,9 +15,13 @@ scheduleRouter.post('/generate', requireRole('Super Admin', 'Fakultet operatori'
   if (restrictionBlocks(req.user, 'schedule', 'write')) return res.status(403).json({ error: 'Ruxsat yetarli emas (cheklangan)' })
   const semester = Number(req.body?.semester) || 1
   const maxMs = Math.min(120_000, Number(req.body?.maxMs) || 5000)
+  // Qaysi kurslar obeddan keyingi (2-)smenaga — 4,5,6-juftlik. Standart: 1-kurs.
+  const afternoonCourses = Array.isArray(req.body?.afternoonCourses)
+    ? [...new Set(req.body.afternoonCourses.map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 6))]
+    : [1]
 
   const run = await prisma.schedulingRun.create({ data: { semester, status: 'running' } })
-  startGenerateJob({ runId: run.id, semester, maxMs })
+  startGenerateJob({ runId: run.id, semester, maxMs, afternoonCourses })
   await audit('Jadval generatsiyasi boshlandi', `run #${run.id}`, req)
 
   res.status(202).json({

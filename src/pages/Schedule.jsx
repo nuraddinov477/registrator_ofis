@@ -39,6 +39,7 @@ export default function Schedule() {
   const [genOpen, setGenOpen] = useState(false)
   const [semester, setSemester] = useState('1')
   const [seconds, setSeconds] = useState(5)
+  const [afternoonCourses, setAfternoonCourses] = useState([1]) // obeddan keyingi (2-)smenaga qo'yiladigan kurslar
   const [busy, setBusy] = useState('') // generatsiya davom etayotgan bo'lsa — holat matni
   // Jadval amal qilish sana oralig'i (dan — gacha) — lokalda saqlanadi
   const [date, setDate] = useState(() => localStorage.getItem('smartjadval-schedule-date') || new Date().toISOString().slice(0, 10))
@@ -99,7 +100,7 @@ export default function Schedule() {
     setGenOpen(false); setBusy('Boshlanmoqda…'); setErr('')
     try {
       const { runId: newId } = await api('/schedule/generate', {
-        method: 'POST', body: { semester: Number(semester), maxMs: Number(seconds) * 1000 },
+        method: 'POST', body: { semester: Number(semester), maxMs: Number(seconds) * 1000, afternoonCourses },
       })
       let final = null
       for (let i = 0; i < 150; i++) {
@@ -343,6 +344,23 @@ export default function Schedule() {
           </Field>
           <Field label="Optimallashtirish vaqti (soniya)">
             <input className="input" type="number" min="1" max="120" value={seconds} onChange={(e) => setSeconds(e.target.value)} />
+          </Field>
+          <Field label="Obeddan keyingi (2-)smenaga qo'yiladigan kurslar">
+            <div className="flex flex-wrap gap-2">
+              {[1, 2, 3, 4, 5, 6].map((c) => {
+                const on = afternoonCourses.includes(c)
+                return (
+                  <button key={c} type="button"
+                    onClick={() => setAfternoonCourses((prev) => on ? prev.filter((x) => x !== c) : [...prev, c])}
+                    className={`h-9 min-w-[3rem] rounded-lg border px-2 text-sm transition ${on ? 'border-brand bg-brand/10 text-brand' : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}>
+                    {c}-kurs
+                  </button>
+                )
+              })}
+            </div>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Belgilangan kurslar — 4, 5, 6-juftlik (obeddan keyin). Qolganlari — 1, 2, 3, 4-juftlik (ertalab).
+            </p>
           </Field>
           <div className="flex justify-end gap-2 pt-2">
             <button className="btn-ghost" onClick={() => setGenOpen(false)}>Bekor</button>

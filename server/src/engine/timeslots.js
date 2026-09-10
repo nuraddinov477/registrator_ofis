@@ -11,14 +11,21 @@ export const slotIndex = (day, pair) => day * PAIRS + (pair - 1)
 export const dayOf = (slot) => Math.floor(slot / PAIRS)
 export const pairOf = (slot) => (slot % PAIRS) + 1
 
-// Qattiq cheklash 8: 4-kurs → 1..4 juftlik, 1-3 kurs → 1..5 juftlik
-export const maxPairForCourse = (course) => (course >= 4 ? 4 : 5)
+// Smenalar: 1-smena (ertalabki) 1..4-juftlik, 2-smena (obeddan keyingi) 4..6-juftlik.
+// 4-juftlik ikkala smenaning chegarasi — ikkalasida ham bor.
+export const MORNING_PAIRS = [1, 2, 3, 4]
+export const AFTERNOON_PAIRS = [4, 5, 6]
+
+// Kurs qaysi smenada: afternoonCourses ro'yxatidagi kurslar 2-smenada (4,5,6-juftlik),
+// qolganlari 1-smenada (1,2,3,4-juftlik). Standart: 1-kurs → 2-smena.
+export function pairsForCourse(course, afternoonCourses = [1]) {
+  return afternoonCourses.includes(course) ? AFTERNOON_PAIRS : MORNING_PAIRS
+}
 
 // Kursga ruxsat etilgan slotlar, ertalabki juftliklar oldinda (greedy/morning uchun)
-export function allowedSlots(course) {
-  const maxPair = maxPairForCourse(course)
+export function allowedSlots(course, afternoonCourses = [1]) {
   const slots = []
-  for (let pair = 1; pair <= maxPair; pair++) {
+  for (const pair of pairsForCourse(course, afternoonCourses)) {
     for (let day = 0; day < DAYS; day++) {
       slots.push(slotIndex(day, pair))
     }

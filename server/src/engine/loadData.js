@@ -5,7 +5,8 @@ import { allowedSlots, dayOf, pairOf } from './timeslots.js'
 // Har bir Workload(weeklyHours=N) → N ta "event" (har biri haftada bitta darsga).
 // Event = jadvalga joylanadigan eng kichik birlik. Guruh/o'qituvchi/fan QAT'IY,
 // faqat slot va xona o'zgaradi (qidiruv fazosi shu).
-export async function loadData(prisma, semester = 1) {
+export async function loadData(prisma, semester = 1, opts = {}) {
+  const { afternoonCourses = [1] } = opts
   const [workloads, rooms, teacherConstraints] = await Promise.all([
     prisma.workload.findMany({
       where: { semester },
@@ -103,7 +104,7 @@ export async function loadData(prisma, semester = 1) {
         slot: -1,
         room: -1,
       }
-      ev.slots = applyTeacherConstraint(allowedSlots(ev.course), ev.teacherId) // ruxsat etilgan slotlar
+      ev.slots = applyTeacherConstraint(allowedSlots(ev.course, afternoonCourses), ev.teacherId) // ruxsat etilgan slotlar
       // Nomzod xonalar: biriktirilgan xona(lar) va sig'imi eng mos kelganlari oldinda —
       // greedy shulardan birinchi bo'sh topganini tanlaydi (assignedRoom/roomFit soft cheklashlariga mos)
       const candidateRooms = roomMeta.filter((r) => roomAllowed(r, ev))

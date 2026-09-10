@@ -5,10 +5,10 @@ import { PrismaClient } from '@prisma/client'
 import { solve } from './solve.js'
 
 const prisma = new PrismaClient()
-const { runId, semester, maxMs } = workerData
+const { runId, semester, maxMs, afternoonCourses } = workerData
 
 try {
-  const result = await solve(prisma, { semester, maxMs })
+  const result = await solve(prisma, { semester, maxMs, afternoonCourses })
 
   if (result.entries.length) {
     await prisma.scheduleEntry.createMany({ data: result.entries.map((e) => ({ ...e, runId })) })

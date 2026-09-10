@@ -30,8 +30,8 @@ function verify(ctx) {
 
 // To'liq gibrid yechim: yuklash → greedy → simulated annealing → tekshirish
 export async function solve(prisma, options = {}) {
-  const { semester = 1, maxMs = 5000, ...annealOpts } = options
-  const ctx = await loadData(prisma, semester)
+  const { semester = 1, maxMs = 5000, afternoonCourses = [1], ...annealOpts } = options
+  const ctx = await loadData(prisma, semester, { afternoonCourses })
 
   if (ctx.events.length === 0) {
     return { ctx, semester, empty: true, report: { hard: 0, soft: 0, feasible: true, unplaced: 0, breakdown: { group: 0, teacher: 0, room: 0 }, infeasibleEvents: [] }, entries: [] }
