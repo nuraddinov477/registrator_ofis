@@ -17,6 +17,7 @@ export const WEIGHTS = {
   groupDayMin: 12, // guruh uchun band kunda atigi 1 ta dars bo'lsa (2 tadan kam) — talaba shu 1 soat uchun kelmasin
   assignedRoom: 22, // guruhga maxsus biriktirilgan xona bor-u, dars boshqa xonaga qo'yilgan bo'lsa
   roomFit: 2, // xona sig'imi guruh sonidan (+2 tolerantlik bilan) ortiqcha bo'lsa — har ortiqcha o'rin uchun
+  afternoonEarly: 12, // 2-smena guruhi 4,5,6 o'rniga 2 yoki 3-juftlikка tushsa — faqat sig'masa "to'kilsin", aks holda 4,5,6 afzal
   morning: 1, // qiyin fan kechki juftlikda
   groupBalance: 1, // guruh yukini kunlarga teng taqsimlash
   lonePair: 8, // o'qituvchi kuni 1 juftlikdan iborat — 1 soat uchun qatnamasin
@@ -65,6 +66,8 @@ export function groupCost(groupEvents, W = WEIGHTS) {
     // Xona sig'imi guruh sonidan ancha ortiq bo'lmasin (+2 tolerantlik) — mos xona afzal
     const cap = e.roomCapacities ? e.roomCapacities[e.room] : null
     if (cap != null && cap - e.groupSize > 2) cost += (cap - e.groupSize - 2) * W.roomFit
+    // 2-smena guruhi 4,5,6 o'rniga 2/3-juftlikка tushsa — faqat 4,5,6 sig'masa "to'kilsin"
+    if (e.afternoonShift && pairOf(e.slot) < 4) cost += W.afternoonEarly
   }
 
   const counts = []

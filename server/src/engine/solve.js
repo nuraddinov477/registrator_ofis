@@ -25,7 +25,7 @@ export function buildDiagnostics(ctx) {
     if (needed > capacity) {
       groupOverload.push({
         group: gName.get(gid), course, needed, capacity,
-        shift: afternoonCourses.includes(course) ? '2-smena (4,5,6-juftlik)' : '1-smena (1,2,3,4-juftlik)',
+        shift: afternoonCourses.includes(course) ? '2-smena (4,5,6-juftlik, sig\'masa 2,3-ga to\'kiladi)' : '1-smena (1,2,3,4-juftlik)',
       })
     }
   }

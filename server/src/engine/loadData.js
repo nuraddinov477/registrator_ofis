@@ -96,6 +96,7 @@ export async function loadData(prisma, semester = 1, opts = {}) {
         teacherName: w.teacher?.fullName,
         subjectName: w.subject?.name,
         course: wgroups[0]?.course ?? 1,
+        afternoonShift: afternoonCourses.includes(wgroups[0]?.course ?? 1), // 2-smena — 4,5,6 afzal (constraints.js)
         groupSize: wgroups.reduce((s, g) => s + (g.size ?? 0), 0), // barcha guruh talabalari yig'indisi
         specialtyIds: [...new Set(wgroups.map((g) => g.specialtyId).filter((v) => v != null))],
         facultyIds: [...new Set(wgroups.map((g) => g.facultyId).filter((v) => v != null))],

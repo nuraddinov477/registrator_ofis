@@ -433,7 +433,7 @@ export default function Schedule() {
               })}
             </div>
             <p className="mt-1.5 text-xs text-slate-400">
-              Belgilangan kurslar — 4, 5, 6-juftlik (obeddan keyin). Qolganlari — 1, 2, 3, 4-juftlik (ertalab).
+              Belgilangan kurslar — 4, 5, 6-juftlik (obeddan keyin); yuklama sig'masa 2 va 3-juftlikка ham to'kiladi (1-juftlik hech qachon). Qolganlari — 1, 2, 3, 4-juftlik (ertalab).
             </p>
           </Field>
           <div className="flex justify-end gap-2 pt-2">
