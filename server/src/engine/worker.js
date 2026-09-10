@@ -13,17 +13,27 @@ try {
   if (result.entries.length) {
     await prisma.scheduleEntry.createMany({ data: result.entries.map((e) => ({ ...e, runId })) })
   }
+  const reportJson = JSON.stringify({
+    unplaced: result.report.unplaced,
+    breakdown: result.report.breakdown,
+    infeasibleEvents: result.report.infeasibleEvents,
+    diagnostics: result.diagnostics,
+  })
   await prisma.schedulingRun.update({
     where: { id: runId },
     data: {
       status: result.report.feasible ? 'done' : 'failed',
       hardScore: result.report.hard,
       softScore: result.report.soft,
+      report: reportJson,
     },
   })
   parentPort?.postMessage({ ok: true, runId, hard: result.report.hard, soft: result.report.soft })
 } catch (err) {
-  await prisma.schedulingRun.update({ where: { id: runId }, data: { status: 'failed' } }).catch(() => {})
+  await prisma.schedulingRun.update({
+    where: { id: runId },
+    data: { status: 'failed', report: JSON.stringify({ error: String(err?.message || err) }) },
+  }).catch(() => {})
   parentPort?.postMessage({ ok: false, runId, error: String(err?.message || err) })
 } finally {
   await prisma.$disconnect()

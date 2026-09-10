@@ -212,6 +212,9 @@ model SchedulingRun {
   status    String          @default("draft") // draft / running / done / failed
   hardScore Int             @default(0) // qattiq cheklash buzilishlari
   softScore Int             @default(0) // yumshoq cheklash jarimasi
+  // Tashxis (JSON-string): guruh/o'qituvchi yuklama oshib ketishi, xonasiz/vaqtsiz
+  // qolgan darslar va sabablari — nima uchun "failed" bo'lganini aniq ko'rsatadi
+  report    String?
   entries   ScheduleEntry[]
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt

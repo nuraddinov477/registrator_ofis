@@ -115,7 +115,23 @@ export async function loadData(prisma, semester = 1, opts = {}) {
       })
       ev.rooms = candidateRooms.map((r) => r.id)
       ev.roomCapacities = Object.fromEntries(candidateRooms.map((r) => [r.id, r.capacity]))
-      if (ev.rooms.length === 0 || ev.slots.length === 0) infeasible.push(ev)
+      // Nega joylab bo'lmaydi — aniq sabab (UI'da ko'rsatiladi)
+      if (ev.slots.length === 0) {
+        ev.reason = "o'qituvchining istisnolari (bloklangan kunlar / faqat ayrim juftliklar) tufayli bo'sh vaqt qolmadi"
+        infeasible.push(ev)
+      } else if (ev.rooms.length === 0) {
+        const fitByCap = roomMeta.filter((r) => r.capacity >= ev.groupSize)
+        const fitByFaculty = fitByCap.filter((r) => r.facultyId == null || ev.facultyIds.includes(r.facultyId))
+        if (fitByCap.length === 0) {
+          const maxCap = roomMeta.reduce((m, r) => Math.max(m, r.capacity), 0)
+          ev.reason = `guruh ${ev.groupSize} kishilik — sig'imi yetarli xona yo'q (eng katta xona ${maxCap} o'rin)`
+        } else if (fitByFaculty.length === 0) {
+          ev.reason = "fakultet binosida (yoki asosiy binoda) sig'imi mos xona yo'q — boshqa fakultet binosidan foydalanib bo'lmaydi"
+        } else {
+          ev.reason = "faqat maxsus xonalar mos keladi, lekin bu guruh/o'qituvchi/yo'nalishga kirish ruxsati berilmagan"
+        }
+        infeasible.push(ev)
+      }
       events.push(ev)
     }
   }
@@ -133,5 +149,5 @@ export async function loadData(prisma, semester = 1, opts = {}) {
     }
   }
 
-  return { events, byGroup, byTeacher, rooms: roomMeta, infeasible, semester }
+  return { events, byGroup, byTeacher, rooms: roomMeta, infeasible, semester, afternoonCourses }
 }

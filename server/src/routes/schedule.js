@@ -4,6 +4,8 @@ import { prisma, audit } from '../db.js'
 import { requireRole } from '../auth/middleware.js'
 import { restrictionBlocks } from '../auth/access.js'
 import { startGenerateJob } from '../engine/jobRunner.js'
+import { loadData } from '../engine/loadData.js'
+import { buildDiagnostics } from '../engine/solve.js'
 import { DAY_NAMES, DAYS, PAIRS } from '../engine/timeslots.js'
 
 export const scheduleRouter = Router()
@@ -32,17 +34,36 @@ scheduleRouter.post('/generate', requireRole('Super Admin', 'Fakultet operatori'
   })
 }))
 
+// POST /api/schedule/diagnose  — jadval YARATMASDAN, joriy ma'lumotdagi muammolarni
+// aniqlaydi: qaysi guruhga/o'qituvchiga yuklama oshib ketgan, qaysi dars xonasiz/vaqtsiz
+// qolishi mumkin va nega. "Jadval yaratish" dan oldin tekshirish uchun.
+scheduleRouter.post('/diagnose', requireRole('Super Admin', 'Fakultet operatori'), asyncHandler(async (req, res) => {
+  const semester = Number(req.body?.semester) || 1
+  const afternoonCourses = Array.isArray(req.body?.afternoonCourses)
+    ? [...new Set(req.body.afternoonCourses.map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 6))]
+    : [1]
+  const ctx = await loadData(prisma, semester, { afternoonCourses })
+  const diagnostics = buildDiagnostics(ctx)
+  const totalEvents = ctx.events.length
+  const problems = diagnostics.groupOverload.length + diagnostics.teacherOverload.length + diagnostics.blocked.length
+  res.json({ semester, afternoonCourses, totalEvents, ok: problems === 0, diagnostics })
+}))
+
 // GET /api/schedule/runs  — yaratilgan jadvallar ro'yxati
 scheduleRouter.get('/runs', asyncHandler(async (req, res) => {
   const runs = await prisma.schedulingRun.findMany({
     orderBy: { id: 'desc' },
     include: { _count: { select: { entries: true } } },
   })
-  res.json(runs.map((r) => ({
-    id: r.id, semester: r.semester, status: r.status,
-    hardScore: r.hardScore, softScore: r.softScore,
-    entries: r._count.entries, createdAt: r.createdAt,
-  })))
+  res.json(runs.map((r) => {
+    let report = null
+    try { report = r.report ? JSON.parse(r.report) : null } catch { report = null }
+    return {
+      id: r.id, semester: r.semester, status: r.status,
+      hardScore: r.hardScore, softScore: r.softScore,
+      entries: r._count.entries, createdAt: r.createdAt, report,
+    }
+  }))
 }))
 
 // GET /api/schedule/runs/:id  — topshiriq formatidagi yakuniy jadval
@@ -51,9 +72,12 @@ scheduleRouter.get('/runs/:id', asyncHandler(async (req, res) => {
   const run = await prisma.schedulingRun.findUnique({ where: { id } })
   if (!run) return res.status(404).json({ error: 'Run topilmadi' })
   const entries = await prisma.scheduleEntry.findMany({ where: { runId: id }, orderBy: { id: 'asc' } })
+  // report — JSON-string sifatida saqlanadi; frontend uchun obyektga aylantiramiz
+  let report = null
+  try { report = run.report ? JSON.parse(run.report) : null } catch { report = null }
   // Topshiriq chiqish formati: { group_id, teacher_id, subject_id, room_id, day, pair }
   res.json({
-    run,
+    run: { ...run, report },
     schedule: entries.map((e) => ({
       group_id: e.groupId, teacher_id: e.teacherId, subject_id: e.subjectId,
       room_id: e.roomId, day: e.day, pair: e.pair,

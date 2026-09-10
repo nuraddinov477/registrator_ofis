@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Zap, Loader2, RefreshCw, CalendarDays, Trash2, UserCog, Download } from 'lucide-react'
+import { Zap, Loader2, RefreshCw, CalendarDays, Trash2, UserCog, Download, ClipboardCheck, XCircle } from 'lucide-react'
 import { api } from '../api/client'
 import { roleOf, ROLES } from '../lib/access'
 import { Modal, Field, Badge, SearchableSelect } from '../components/ui'
 import TeacherConstraintsModal from '../components/TeacherConstraintsModal'
 import ScheduleExportModal from '../components/ScheduleExportModal'
+import ScheduleDiagnostics from '../components/ScheduleDiagnostics'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const DAY_COLORS = [
@@ -40,6 +41,8 @@ export default function Schedule() {
   const [semester, setSemester] = useState('1')
   const [seconds, setSeconds] = useState(5)
   const [afternoonCourses, setAfternoonCourses] = useState([1]) // obeddan keyingi (2-)smenaga qo'yiladigan kurslar
+  const [diag, setDiag] = useState(null) // "Tekshirish" natijasi (jadval yaratmasdan)
+  const [diagBusy, setDiagBusy] = useState(false)
   const [busy, setBusy] = useState('') // generatsiya davom etayotgan bo'lsa — holat matni
   // Jadval amal qilish sana oralig'i (dan — gacha) — lokalda saqlanadi
   const [date, setDate] = useState(() => localStorage.getItem('smartjadval-schedule-date') || new Date().toISOString().slice(0, 10))
@@ -94,6 +97,17 @@ export default function Schedule() {
       .catch((e) => { if (alive) { setErr(e.message); setGrid(null) } })
     return () => { alive = false }
   }, [runId, groupId, isTeacher, viewMode])
+
+  // Jadval YARATMASDAN joriy ma'lumotdagi cheklov buzilishlarini tekshirish
+  const runDiagnose = async () => {
+    setDiagBusy(true); setErr('')
+    try {
+      const r = await api('/schedule/diagnose', {
+        method: 'POST', body: { semester: Number(semester), afternoonCourses },
+      })
+      setDiag(r)
+    } catch (e) { setErr(e.message) } finally { setDiagBusy(false) }
+  }
 
   // Jadval yaratish: generate → done bo'lguncha poll → natijani ko'rsatish.
   const generate = async () => {
@@ -248,6 +262,12 @@ export default function Schedule() {
             <UserCog size={15} /> O'qituvchi istisnolari
           </button>
         )}
+        {canGenerate && (
+          <button onClick={runDiagnose} disabled={diagBusy} title="Jadval yaratmasdan ma'lumotdagi cheklov buzilishlarini tekshirish"
+            className="mb-0.5 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+            {diagBusy ? <Loader2 size={15} className="animate-spin" /> : <ClipboardCheck size={15} />} Tekshirish
+          </button>
+        )}
         {runId && (
           <button onClick={() => setExportOpen(true)} title="Jadvalni yuklab olish"
             className="mb-0.5 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
@@ -263,6 +283,29 @@ export default function Schedule() {
           </div>
         )}
       </div>
+
+      {/* "Tekshirish" natijasi — jadval yaratmasdan ma'lumotdagi muammolar */}
+      {diag && (
+        <div className="mb-4">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              Ma'lumot tekshiruvi ({diag.totalEvents} ta dars · {diag.semester}-semestr)
+            </span>
+            <button onClick={() => setDiag(null)} className="text-xs text-slate-400 hover:text-brand">Yopish</button>
+          </div>
+          <ScheduleDiagnostics diagnostics={diag.diagnostics} />
+        </div>
+      )}
+
+      {/* Tugagan run "failed" bo'lsa yoki muammolari bo'lsa — aniq sabab */}
+      {run && run.report?.diagnostics && (run.status === 'failed' || run.report.unplaced > 0) && (
+        <div className="mb-4">
+          <div className="mb-1.5 flex items-center gap-2 text-sm font-medium text-red-500">
+            <XCircle size={15} /> #{run.id} jadval to'liq tuzilmadi — sabablari:
+          </div>
+          <ScheduleDiagnostics diagnostics={run.report.diagnostics} />
+        </div>
+      )}
 
       {isSuper && viewMode === 'group' && grid && (
         <p className="mb-2 text-xs text-slate-400">
