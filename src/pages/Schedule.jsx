@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Zap, Loader2, RefreshCw, CalendarDays, Trash2, UserCog, Download, ClipboardCheck, XCircle } from 'lucide-react'
+import { Zap, Loader2, RefreshCw, CalendarDays, Trash2, UserCog, Download, ClipboardCheck, XCircle, Archive, RotateCcw } from 'lucide-react'
 import { api } from '../api/client'
 import { roleOf, ROLES } from '../lib/access'
 import { Modal, Field, Badge, SearchableSelect } from '../components/ui'
@@ -60,10 +60,11 @@ export default function Schedule() {
   const loadMeta = async (selectId) => {
     setLoading(true)
     try {
-      const [rs, gs] = await Promise.all([api('/schedule/runs'), api('/groups')])
+      const [rs, gs] = await Promise.all([api('/schedule/runs?all=1'), api('/groups')])
       setRuns(rs); setGroups(gs); setErr('')
       setGroupId((cur) => cur ?? gs[0]?.id ?? null)
-      const pick = selectId ?? (rs.find((r) => r.status === 'done') || rs[0])?.id ?? null
+      const active = rs.filter((r) => !r.archived)
+      const pick = selectId ?? (active.find((r) => r.status === 'done') || active[0] || rs[0])?.id ?? null
       setRunId((cur) => selectId ?? cur ?? pick)
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }
@@ -175,16 +176,23 @@ export default function Schedule() {
     } catch (e) { setEditErr(e.message) } finally { setSaving(false) }
   }
 
-  // Butun jadvalni (run) o'chirish
-  const deleteRun = async () => {
+  // Jadvalni ARXIVGA ko'chirish — butunlay o'chmaydi, darslari saqlanadi, tiklash mumkin
+  const archiveRun = async () => {
     if (!runId) return
-    if (!confirm(`#${runId} jadval butunlay o'chirilsinmi? Barcha darslari bilan o'chadi.`)) return
+    if (!confirm(`#${runId} jadval arxivga ko'chirilsinmi? Butunlay o'chmaydi — barcha darslari saqlanadi, keyin tiklash mumkin.`)) return
     try {
       await api(`/schedule/runs/${runId}`, { method: 'DELETE' })
-      const rs = await api('/schedule/runs')
-      setRuns(rs)
-      setRunId((rs.find((r) => r.status === 'done') || rs[0])?.id ?? null)
-      setGrid(null); setAvail(null)
+      await loadMeta()
+      setGrid(null); setAvail(null); setRoomAvail(null)
+    } catch (e) { setErr(e.message) }
+  }
+
+  // Arxivdan tiklash
+  const restoreRun = async () => {
+    if (!runId) return
+    try {
+      await api(`/schedule/runs/${runId}/restore`, { method: 'POST' })
+      await loadMeta(runId)
     } catch (e) { setErr(e.message) }
   }
 
@@ -229,18 +237,27 @@ export default function Schedule() {
       {/* Boshqaruv paneli: jadval + guruh tanlash + statistika */}
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Field label="Jadval (run)">
-          <select className="input min-w-[220px]" value={runId ?? ''} onChange={(e) => setRunId(Number(e.target.value))}>
+          <select className="input min-w-[240px]" value={runId ?? ''} onChange={(e) => setRunId(Number(e.target.value))}>
             {runs.length === 0 && <option value="">— hali yo'q —</option>}
             {runs.map((r) => (
-              <option key={r.id} value={r.id}>#{r.id} · {r.semester}-semestr · {r.entries} dars · {r.status}</option>
+              <option key={r.id} value={r.id}>
+                #{r.id} · {r.semester}-semestr · {r.entries} dars · {r.status}{r.archived ? ' · ARXIV' : ''}
+              </option>
             ))}
           </select>
         </Field>
-        {canGenerate && runId && (
-          <button onClick={deleteRun} title="Tanlangan jadvalni o'chirish"
-            className="mb-0.5 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm text-red-500 hover:bg-red-500/10">
-            <Trash2 size={15} /> O'chirish
-          </button>
+        {canGenerate && runId && run && (
+          run.archived ? (
+            <button onClick={restoreRun} title="Arxivdan tiklash"
+              className="mb-0.5 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm text-emerald-600 hover:bg-emerald-500/10">
+              <RotateCcw size={15} /> Arxivdan tiklash
+            </button>
+          ) : (
+            <button onClick={archiveRun} title="Jadvalni arxivga ko'chirish (butunlay o'chmaydi)"
+              className="mb-0.5 inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm text-slate-500 hover:bg-slate-500/10">
+              <Archive size={15} /> Arxivlash
+            </button>
+          )
         )}
         {isTeacher && <div className="pb-2"><Badge color="blue">Mening jadvalim</Badge></div>}
         {!isTeacher && (

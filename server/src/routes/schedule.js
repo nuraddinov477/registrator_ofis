@@ -49,9 +49,12 @@ scheduleRouter.post('/diagnose', requireRole('Super Admin', 'Fakultet operatori'
   res.json({ semester, afternoonCourses, totalEvents, ok: problems === 0, diagnostics })
 }))
 
-// GET /api/schedule/runs  — yaratilgan jadvallar ro'yxati
+// GET /api/schedule/runs  — yaratilgan jadvallar ro'yxati.
+// Standart: faqat faol (arxivlanmagan). ?all=1 — arxivdagilarni ham qaytaradi.
 scheduleRouter.get('/runs', asyncHandler(async (req, res) => {
+  const all = req.query.all === '1' || req.query.all === 'true'
   const runs = await prisma.schedulingRun.findMany({
+    where: all ? undefined : { archived: false },
     orderBy: { id: 'desc' },
     include: { _count: { select: { entries: true } } },
   })
@@ -59,7 +62,7 @@ scheduleRouter.get('/runs', asyncHandler(async (req, res) => {
     let report = null
     try { report = r.report ? JSON.parse(r.report) : null } catch { report = null }
     return {
-      id: r.id, semester: r.semester, status: r.status,
+      id: r.id, semester: r.semester, status: r.status, archived: r.archived,
       hardScore: r.hardScore, softScore: r.softScore,
       entries: r._count.entries, createdAt: r.createdAt, report,
     }
@@ -275,13 +278,24 @@ scheduleRouter.delete('/runs/:id/entries/:entryId', requireRole('Super Admin'), 
   res.status(204).end()
 }))
 
-// DELETE /api/schedule/runs/:id  — butun jadvalni (run) va uning barcha darslarini o'chirish
+// DELETE /api/schedule/runs/:id  — jadvalni ARXIVGA ko'chiradi (butunlay O'CHIRMAYDI).
+// Barcha darslari (ScheduleEntry) saqlanadi, kerak bo'lsa /restore orqali tiklanadi.
+// Tarix hech qachon yo'qolmaydi.
 scheduleRouter.delete('/runs/:id', requireRole('Super Admin', 'Fakultet operatori'), asyncHandler(async (req, res) => {
   const id = Number(req.params.id)
   const run = await prisma.schedulingRun.findUnique({ where: { id } })
   if (!run) return res.status(404).json({ error: 'Jadval topilmadi' })
-  // ScheduleEntry.run relation onDelete: Cascade — darslar avtomatik o'chadi
-  await prisma.schedulingRun.delete({ where: { id } })
-  await audit("O'chirildi: Jadval", `run #${id}`, req)
+  await prisma.schedulingRun.update({ where: { id }, data: { archived: true } })
+  await audit('Arxivlandi: Jadval', `run #${id}`, req)
   res.status(204).end()
+}))
+
+// POST /api/schedule/runs/:id/restore  — arxivdan qaytaradi
+scheduleRouter.post('/runs/:id/restore', requireRole('Super Admin', 'Fakultet operatori'), asyncHandler(async (req, res) => {
+  const id = Number(req.params.id)
+  const run = await prisma.schedulingRun.findUnique({ where: { id } })
+  if (!run) return res.status(404).json({ error: 'Jadval topilmadi' })
+  await prisma.schedulingRun.update({ where: { id }, data: { archived: false } })
+  await audit('Arxivdan tiklandi: Jadval', `run #${id}`, req)
+  res.json({ ok: true, id })
 }))

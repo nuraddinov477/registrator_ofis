@@ -215,6 +215,9 @@ model SchedulingRun {
   // Tashxis (JSON-string): guruh/o'qituvchi yuklama oshib ketishi, xonasiz/vaqtsiz
   // qolgan darslar va sabablari — nima uchun "failed" bo'lganini aniq ko'rsatadi
   report    String?
+  // Jadval HECH QACHON butunlay o'chmaydi — "o'chirish" faqat arxivga ko'chiradi
+  // (barcha darslari saqlanadi, kerak bo'lsa tiklanadi). Tarix to'liq saqlanadi.
+  archived  Boolean         @default(false)
   entries   ScheduleEntry[]
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
