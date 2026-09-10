@@ -157,6 +157,10 @@ model RoomPermission {
   groupId     Int?
   specialty   Specialty? @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
   specialtyId Int?
+  // exclusive=true (faqat guruh ruxsatida ma'noli): bu guruh FAQAT shu xona(lar)da dars
+  // o'tadi — jadval tuzishda boshqa xona nomzod bo'lmaydi (qat'iy). exclusive=false —
+  // shunchaki ruxsat + yumshoq ustuvorlik (assignedRoom).
+  exclusive   Boolean    @default(false)
   createdAt   DateTime   @default(now())
 }
 

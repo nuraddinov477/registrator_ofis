@@ -249,6 +249,11 @@ async function roomEligibility({ roomId, groupId, teacherId }) {
       p.teacherId === teacherId || p.groupId === groupId || (group.specialtyId != null && p.specialtyId === group.specialtyId))
     if (!ok) return `"${room.name}" — maxsus xona, bu guruh/o'qituvchi/yo'nalishga kirish ruxsati berilmagan`
   }
+  // QAT'IY biriktirish: bu guruh faqat exclusive xonalarida dars o'tishi mumkin
+  const exPerms = await prisma.roomPermission.findMany({ where: { groupId, exclusive: true }, include: { room: true } })
+  if (exPerms.length && !exPerms.some((p) => p.roomId === roomId)) {
+    return `Bu guruh FAQAT "${exPerms.map((p) => p.room?.name).filter(Boolean).join(', ')}" xonasiga biriktirilgan — boshqa xonaga qo'yib bo'lmaydi`
+  }
   return null
 }
 

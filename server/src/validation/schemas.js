@@ -44,7 +44,7 @@ export const schemas = {
     buildingId: optInt,
   }),
 
-  roomPermission: z.object({ roomId: reqInt, teacherId: optInt, groupId: optInt, specialtyId: optInt }),
+  roomPermission: z.object({ roomId: reqInt, teacherId: optInt, groupId: optInt, specialtyId: optInt, exclusive: bool }),
 
   // blockedDays/allowedPairs — massiv kelsa JSON-string'ga o'giriladi (Room.features bilan bir xil naqsh)
   teacherConstraint: z.object({
