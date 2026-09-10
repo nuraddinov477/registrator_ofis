@@ -166,6 +166,38 @@ scheduleRouter.get('/runs/:id/teacher-availability', asyncHandler(async (req, re
   res.json({ days: DAY_NAMES, pairs: PAIRS, teachers: result })
 }))
 
+// GET /api/schedule/runs/:id/room-availability
+// Barcha xonalarning bandlik matritsasi (bino bo'yicha): har biri uchun PAIRS×DAYS grid.
+// Hujayra null → bo'sh, aks holda { group, subject, teacher } → band (qaysi guruh kirishi bilan).
+scheduleRouter.get('/runs/:id/room-availability', asyncHandler(async (req, res) => {
+  const id = Number(req.params.id)
+  const run = await prisma.schedulingRun.findUnique({ where: { id } })
+  if (!run) return res.status(404).json({ error: 'Run topilmadi' })
+
+  const [entries, rooms, subjects, groups, teachers] = await Promise.all([
+    prisma.scheduleEntry.findMany({ where: { runId: id } }),
+    prisma.room.findMany({ include: { building: true }, orderBy: [{ buildingId: 'asc' }, { name: 'asc' }] }),
+    prisma.subject.findMany(), prisma.group.findMany(), prisma.teacher.findMany(),
+  ])
+  const sName = new Map(subjects.map((x) => [x.id, x.name]))
+  const gName = new Map(groups.map((x) => [x.id, x.name]))
+  const tName = new Map(teachers.map((x) => [x.id, x.fullName]))
+
+  const byRoom = new Map(rooms.map((r) => [r.id, {
+    id: r.id, name: r.name, building: r.building?.name || 'Bino belgilanmagan', capacity: r.capacity, busy: 0,
+    grid: Array.from({ length: PAIRS }, () => Array(DAYS).fill(null)),
+  }]))
+  for (const e of entries) {
+    const r = byRoom.get(e.roomId)
+    if (!r) continue
+    if (r.grid[e.pair - 1][e.day] == null) r.busy++
+    r.grid[e.pair - 1][e.day] = { group: gName.get(e.groupId), subject: sName.get(e.subjectId), teacher: tName.get(e.teacherId) }
+  }
+  const total = PAIRS * DAYS
+  const result = [...byRoom.values()].map((r) => ({ ...r, free: total - r.busy }))
+  res.json({ days: DAY_NAMES, pairs: PAIRS, rooms: result })
+}))
+
 // ─────────────────────────── Qo'lda tahrirlash (faqat Super Admin) ───────────────────────────
 // Tizim avval avtomatik jadval tuzadi; keyin Super Admin xatolarni qo'lda to'g'irlaydi.
 // Qattiq qoida: bitta slotda (day,pair) bitta guruh / o'qituvchi / xona faqat bitta darsda

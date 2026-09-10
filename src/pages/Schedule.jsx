@@ -24,7 +24,8 @@ export default function Schedule() {
   const [groupId, setGroupId] = useState(null)
   const [grid, setGrid] = useState(null)
   const [avail, setAvail] = useState(null) // o'qituvchilar bandlik matritsasi
-  const [viewMode, setViewMode] = useState('group') // 'group' | 'teachers'
+  const [roomAvail, setRoomAvail] = useState(null) // xonalar bandlik matritsasi
+  const [viewMode, setViewMode] = useState('group') // 'group' | 'teachers' | 'rooms'
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
 
@@ -79,13 +80,20 @@ export default function Schedule() {
   // Run yoki guruh o'zgarsa — jadvalni qayta yuklaymiz.
   // O'qituvchi rolida: o'z jadvali (teacher-grid, teacherId token'dan). Boshqalar: guruh jadvali.
   useEffect(() => {
-    if (!runId) { setGrid(null); setAvail(null); return }
+    if (!runId) { setGrid(null); setAvail(null); setRoomAvail(null); return }
     let alive = true
     // O'qituvchilar bandligi ko'rinishi (faqat o'qituvchi bo'lmagan rollar uchun)
     if (!isTeacher && viewMode === 'teachers') {
       api(`/schedule/runs/${runId}/teacher-availability`)
         .then((a) => { if (alive) { setAvail(a); setErr('') } })
         .catch((e) => { if (alive) { setErr(e.message); setAvail(null) } })
+      return () => { alive = false }
+    }
+    // Xonalar bandligi ko'rinishi
+    if (!isTeacher && viewMode === 'rooms') {
+      api(`/schedule/runs/${runId}/room-availability`)
+        .then((a) => { if (alive) { setRoomAvail(a); setErr('') } })
+        .catch((e) => { if (alive) { setErr(e.message); setRoomAvail(null) } })
       return () => { alive = false }
     }
     if (!isTeacher && !groupId) { setGrid(null); return }
@@ -238,7 +246,7 @@ export default function Schedule() {
         {!isTeacher && (
           <div className="pb-2">
             <div className="inline-flex rounded-lg border border-slate-200 p-0.5 dark:border-slate-700">
-              {[['group', 'Guruh jadvali'], ['teachers', "O'qituvchilar bandligi"]].map(([v, label]) => (
+              {[['group', 'Guruh jadvali'], ['teachers', "O'qituvchilar bandligi"], ['rooms', 'Xonalar bandligi']].map(([v, label]) => (
                 <button key={v} onClick={() => setViewMode(v)}
                   className={`rounded-md px-3 py-1 text-sm font-medium transition ${viewMode === v ? 'bg-brand text-white' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>
                   {label}
@@ -327,6 +335,12 @@ export default function Schedule() {
           <div className="card p-10 text-center text-slate-400">Yuklanmoqda…</div>
         ) : (
           <TeacherAvailability avail={avail} />
+        )
+      ) : (!isTeacher && viewMode === 'rooms') ? (
+        !roomAvail ? (
+          <div className="card p-10 text-center text-slate-400">Yuklanmoqda…</div>
+        ) : (
+          <RoomAvailability avail={roomAvail} />
         )
       ) : !grid ? (
         <div className="card p-10 text-center text-slate-400">Guruh tanlang yoki jadval yuklanmoqda…</div>
@@ -556,6 +570,114 @@ function TeacherAvailability({ avail }) {
         <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-[3px] bg-emerald-500/60" /> bo'sh vaqt</span>
         <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-[3px] bg-rose-500/80" /> band (dars bor)</span>
         <span className="text-slate-400">Hujayra ustiga borsangiz — fan / guruh / xona ko'rinadi</span>
+      </div>
+    </div>
+  )
+}
+
+// Xonalar bandlik jadvali (bino bo'yicha): qatorlar = xonalar, ustunlar = kun×juftlik.
+// Band hujayrada QAYSI GURUH kirishi ko'rinib turadi; hover'da fan + o'qituvchi ham chiqadi.
+function RoomAvailability({ avail }) {
+  const cols = []
+  avail.days.forEach((day, di) => {
+    for (let p = 0; p < avail.pairs; p++) cols.push({ di, p, day, first: p === 0 })
+  })
+
+  const buildings = [...new Set(avail.rooms.map((r) => r.building))].sort()
+  const [q, setQ] = useState('')
+  const [bld, setBld] = useState('')
+  const query = q.trim().toLowerCase()
+
+  const filtered = avail.rooms.filter((r) => {
+    if (bld && r.building !== bld) return false
+    if (!query) return true
+    return r.name.toLowerCase().includes(query)
+      || r.grid.some((row) => row.some((c) => c && (c.group || '').toLowerCase().includes(query)))
+  })
+
+  // Bino bo'yicha guruhlash
+  const grouped = []
+  for (const b of buildings) {
+    const rr = filtered.filter((r) => r.building === b)
+    if (rr.length) grouped.push({ building: b, rooms: rr })
+  }
+
+  if (!avail.rooms.length) {
+    return <div className="card p-10 text-center text-slate-400">Xonalar topilmadi.</div>
+  }
+
+  return (
+    <div className="card">
+      <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-3 dark:border-slate-800">
+        <input className="input max-w-xs" placeholder="Qidirish: xona nomi yoki guruh…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className="input h-9 w-auto py-1" value={bld} onChange={(e) => setBld(e.target.value)}>
+          <option value="">Barcha binolar</option>
+          {buildings.map((b) => <option key={b} value={b}>{b}</option>)}
+        </select>
+        <span className="text-xs text-slate-400">{filtered.length} / {avail.rooms.length} xona</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="border-collapse text-xs">
+          <thead>
+            <tr>
+              <th rowSpan={2} className="sticky left-0 z-10 border-b border-slate-200 bg-white px-3 py-2 text-left font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                Xona
+              </th>
+              {avail.days.map((d) => (
+                <th key={d} colSpan={avail.pairs} className="border-b border-l border-slate-300 px-2 py-2 text-center font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">{d}</th>
+              ))}
+            </tr>
+            <tr>
+              {cols.map((c) => (
+                <th key={`${c.di}-${c.p}`} className={`w-16 border-b border-slate-200 py-1 text-center font-normal text-slate-400 dark:border-slate-800 ${c.first ? 'border-l border-slate-300 dark:border-slate-700' : ''}`}>
+                  {c.p + 1}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {grouped.flatMap((grp) => [
+              (
+                <tr key={`b-${grp.building}`}>
+                  <td colSpan={1 + cols.length} className="sticky left-0 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+                    {grp.building} · {grp.rooms.length} xona
+                  </td>
+                </tr>
+              ),
+              ...grp.rooms.map((r) => (
+                  <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="sticky left-0 z-10 whitespace-nowrap border-b border-slate-100 bg-white px-3 py-1.5 dark:border-slate-800/60 dark:bg-slate-900">
+                      <span className="font-medium text-slate-700 dark:text-slate-200">{r.name}</span>
+                      <span className="ml-1.5 text-[10px] text-slate-400">{r.capacity} o'rin</span>
+                      <span className="ml-1.5 text-[10px] text-emerald-500">{r.free} bo'sh</span>
+                    </td>
+                    {cols.map((c) => {
+                      const cell = r.grid[c.p][c.di]
+                      const label = `${c.day} ${c.p + 1}-juft — ${cell
+                        ? `${cell.group || ''} · ${cell.subject || ''}${cell.teacher ? ' · ' + cell.teacher : ''}`
+                        : "bo'sh"}`
+                      return (
+                        <td key={`${c.di}-${c.p}`} className={`border-b border-slate-100 p-0.5 dark:border-slate-800/60 ${c.first ? 'border-l border-slate-300 dark:border-slate-700' : ''}`}>
+                          <div title={label}
+                            className={`flex h-6 items-center justify-center truncate rounded-[3px] px-1 text-[10px] font-medium ${cell ? 'bg-rose-500/85 text-white hover:bg-rose-500' : 'bg-emerald-500/40 hover:bg-emerald-500/60'}`}>
+                            {cell ? cell.group || '•' : ''}
+                          </div>
+                        </td>
+                      )
+                    })}
+                  </tr>
+              )),
+            ])}
+          </tbody>
+        </table>
+        {filtered.length === 0 && (
+          <div className="p-6 text-center text-sm text-slate-400">"{q}" bo'yicha xona topilmadi</div>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-4 px-3 py-2.5 text-xs text-slate-500 dark:text-slate-400">
+        <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-[3px] bg-emerald-500/40" /> bo'sh</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-[3px] bg-rose-500/85" /> band — ichida qaysi guruh kirishi yozilgan</span>
+        <span className="text-slate-400">Hujayra ustiga borsangiz — guruh + fan + o'qituvchi ko'rinadi</span>
       </div>
     </div>
   )
