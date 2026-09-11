@@ -32,8 +32,13 @@ export async function loadData(prisma, semester = 1, opts = {}) {
   // berilgan xonalar (Auditoriyaga biriktirilgan guruh — darslari o'sha xonaga qo'yilishi kerak).
   // groupRoomMap — yumshoq ustuvorlik (assignedRoom). groupOnlyRoomMap — QAT'IY (exclusive):
   // guruh FAQAT shu xona(lar)da dars o'tadi, boshqa xona nomzod bo'lmaydi.
+  // teacherRoomMap — o'qituvchiga MAXSUS biriktirilgan xona(lar): shu o'qituvchining
+  // darsi bo'lsa, o'sha xona unga ham ustuvor (assignedRoom). O'qituvchining darsi
+  // yo'q/boshqa vaqtda bo'lsa — xona band emas, shu bino/xona ruxsati bor GURUHLAR
+  // (groupRoomMap) ham xuddi shu ustuvorlik bilan tortiladi — ikkalasi ham "tekshiriladi".
   const groupRoomMap = new Map() // groupId -> Set(roomId)  (barcha ruxsatlar)
   const groupOnlyRoomMap = new Map() // groupId -> Set(roomId)  (faqat exclusive)
+  const teacherRoomMap = new Map() // teacherId -> Set(roomId)
   for (const r of roomMeta) {
     for (const gid of r.groups) {
       if (!groupRoomMap.has(gid)) groupRoomMap.set(gid, new Set())
@@ -42,6 +47,10 @@ export async function loadData(prisma, semester = 1, opts = {}) {
     for (const gid of r.exclusiveGroups) {
       if (!groupOnlyRoomMap.has(gid)) groupOnlyRoomMap.set(gid, new Set())
       groupOnlyRoomMap.get(gid).add(r.id)
+    }
+    for (const tid of r.teachers) {
+      if (!teacherRoomMap.has(tid)) teacherRoomMap.set(tid, new Set())
+      teacherRoomMap.get(tid).add(r.id)
     }
   }
 
@@ -89,8 +98,12 @@ export async function loadData(prisma, semester = 1, opts = {}) {
     // hammasi BIRGA bitta darsda ishtirok etadi (fan soati guruhlar soniga ko'paytirilmaydi)
     const wgroups = w.groups.map((x) => x.group).filter(Boolean)
     const groupIds = w.groups.map((x) => x.groupId)
-    // Shu potokdagi guruh(lar)ga maxsus biriktirilgan xona(lar) — bo'lsa, jadval tuzishda ustuvor
-    const assignedRooms = [...new Set(groupIds.flatMap((gid) => [...(groupRoomMap.get(gid) || [])]))]
+    // Shu potokdagi guruh(lar)ga VA/YOKI shu o'qituvchiga maxsus biriktirilgan xona(lar) —
+    // bo'lsa, jadval tuzishda ustuvor (ikkalasi ham tekshiriladi, natijalar birlashtiriladi)
+    const assignedRooms = [...new Set([
+      ...groupIds.flatMap((gid) => [...(groupRoomMap.get(gid) || [])]),
+      ...(teacherRoomMap.get(w.teacherId) || []),
+    ])]
     // QAT'IY biriktirish (exclusive): guruh(lar) faqat shu xona(lar)da dars o'tadi.
     // Bir nechta guruh bo'lsa — kesishma (hammasiga mos xona). Kesishma bo'sh bo'lsa — ziddiyat.
     const exSets = groupIds.map((gid) => groupOnlyRoomMap.get(gid)).filter(Boolean)
