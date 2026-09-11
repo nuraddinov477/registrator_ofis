@@ -98,7 +98,7 @@ export function buildRoutes() {
   router.get('/stats', asyncHandler(async (req, res) => {
     const [faculties, departments, teachers, subjects, groups, rooms, workloads] = await Promise.all([
       prisma.faculty.count(), prisma.department.count(), prisma.teacher.count(),
-      prisma.subject.count(), prisma.group.count(), prisma.room.count(), prisma.workload.count(),
+      prisma.subject.count(), prisma.group.count(), prisma.room.count(), prisma.workload.count({ where: { archived: false } }),
     ])
     res.json({ faculties, departments, teachers, subjects, groups, rooms, workloads })
   }))

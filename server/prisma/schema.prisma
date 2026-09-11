@@ -194,6 +194,10 @@ model Workload {
   // bo'yicha tartib saqlanadi: ma'ruza birinchi, keyin seminar, keyin amaliy (constraints.js)
   type        String           @default("Amaliy")
   semester    Int              @default(1)
+  // Yuklama HECH QACHON butunlay o'chmaydi — "o'chirish" faqat arxivga ko'chiradi
+  // (guruh bog'lanishlari saqlanadi, kerak bo'lsa tiklanadi). Arxivlangan yuklama
+  // jadval generatsiyasida va almashtirish ustasida hisobga olinmaydi.
+  archived    Boolean          @default(false)
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 }

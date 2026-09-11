@@ -121,6 +121,7 @@ async function runTool(name, input, user, req) {
     const scoped = scopeWhere(input.resource, user)
     const field = cfg.field || 'name'
     const where = { ...(scoped || {}) }
+    if (input.resource === 'workloads') where.archived = false // arxivlangan yuklama ko'rsatilmaydi
     if (input.search) where[field] = { contains: input.search }
     const limit = Math.min(Math.max(Number(input.limit) || 15, 1), 40)
     const [rows, total] = await Promise.all([
@@ -133,7 +134,7 @@ async function runTool(name, input, user, req) {
   if (name === 'tayyorlik_tekshir') {
     const [faculties, departments, teachers, subjects, groups, rooms, workloads] = await Promise.all([
       prisma.faculty.count(), prisma.department.count(), prisma.teacher.count(),
-      prisma.subject.count(), prisma.group.count(), prisma.room.count(), prisma.workload.count(),
+      prisma.subject.count(), prisma.group.count(), prisma.room.count(), prisma.workload.count({ where: { archived: false } }),
     ])
     const lastRun = await prisma.schedulingRun.findFirst({ orderBy: { id: 'desc' } })
     const yetishmaydi = []

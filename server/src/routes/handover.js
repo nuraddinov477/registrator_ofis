@@ -21,7 +21,7 @@ function inScope(user, teacher) {
 async function loadColleagues(teacher) {
   const list = await prisma.teacher.findMany({
     where: { departmentId: teacher.departmentId, id: { not: teacher.id }, status: 'faol' },
-    include: { workloads: { select: { weeklyHours: true, subjectId: true } } },
+    include: { workloads: { where: { archived: false }, select: { weeklyHours: true, subjectId: true } } },
   })
   return list.map((t) => ({
     id: t.id,
@@ -40,7 +40,7 @@ export function handoverRouter() {
     const id = Number(req.params.id)
     const teacher = await prisma.teacher.findUnique({
       where: { id },
-      include: { department: true, workloads: { include: { groups: { include: { group: true } }, subject: true } } },
+      include: { department: true, workloads: { where: { archived: false }, include: { groups: { include: { group: true } }, subject: true } } },
     })
     if (!teacher || !inScope(req.user, teacher)) return res.status(404).json({ error: "O'qituvchi topilmadi" })
 
@@ -80,7 +80,7 @@ export function handoverRouter() {
       return res.status(400).json({ error: `status "${GONE_STATUSES.join('" yoki "')}" bo'lishi kerak` })
     }
 
-    const teacher = await prisma.teacher.findUnique({ where: { id }, include: { workloads: true } })
+    const teacher = await prisma.teacher.findUnique({ where: { id }, include: { workloads: { where: { archived: false } } } })
     if (!teacher || !inScope(req.user, teacher)) return res.status(404).json({ error: "O'qituvchi topilmadi" })
 
     // Kamchiliksiz taqsimlash: har bir mavjud yuklamaga qabul qiluvchi ko'rsatilishi shart

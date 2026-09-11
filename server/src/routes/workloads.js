@@ -13,8 +13,10 @@ export function workloadsRouter() {
   const router = Router()
   const whereFor = (req) => scopeWhere('workloads', req.user) || {}
 
+  // Standart: faqat faol (arxivlanmagan). ?all=1 — arxivdagilarni ham qaytaradi.
   router.get('/', requireRead('workloads'), asyncHandler(async (req, res) => {
-    const where = scopeWhere('workloads', req.user) || undefined
+    const all = req.query.all === '1' || req.query.all === 'true'
+    const where = { ...(scopeWhere('workloads', req.user) || {}), ...(all ? {} : { archived: false }) }
     const rows = await prisma.workload.findMany({ where, include, orderBy: { id: 'asc' } })
     res.json(rows)
   }))
@@ -55,13 +57,24 @@ export function workloadsRouter() {
     res.json(row)
   }))
 
+  // Yuklamani ARXIVGA ko'chiradi (butunlay O'CHIRMAYDI) — guruh bog'lanishlari saqlanadi,
+  // jadval generatsiyasi va almashtirish ustasida hisobga olinmaydi, /restore bilan tiklanadi.
   router.delete('/:id', requireWrite('workloads'), asyncHandler(async (req, res) => {
     const id = Number(req.params.id)
     const existing = await prisma.workload.findFirst({ where: { id, ...whereFor(req) } })
     if (!existing) return res.status(404).json({ error: 'Topilmadi' })
-    await prisma.workload.delete({ where: { id } })
-    await audit("O'chirildi: Yuklama", id, req)
+    await prisma.workload.update({ where: { id }, data: { archived: true } })
+    await audit('Arxivlandi: Yuklama', id, req)
     res.status(204).end()
+  }))
+
+  router.post('/:id/restore', requireWrite('workloads'), asyncHandler(async (req, res) => {
+    const id = Number(req.params.id)
+    const existing = await prisma.workload.findFirst({ where: { id, ...whereFor(req) } })
+    if (!existing) return res.status(404).json({ error: 'Topilmadi' })
+    const row = await prisma.workload.update({ where: { id }, data: { archived: false }, include })
+    await audit('Arxivdan tiklandi: Yuklama', labelOf(row), req)
+    res.json(row)
   }))
 
   return router

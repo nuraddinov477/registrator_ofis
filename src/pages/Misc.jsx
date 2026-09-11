@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { BookOpen, FileText, UserCog, ShieldCheck, Plus, Pencil, Trash2 } from 'lucide-react'
+import { BookOpen, FileText, UserCog, ShieldCheck, Plus, Pencil, Trash2, Archive, RotateCcw } from 'lucide-react'
 import { db, useCollection, useIsLoading, useLoadFailed, retry } from '../data/store'
 import { api, auth } from '../api/client'
 import { canWrite, assignableRoles, writableSections, visibleSections, SECTION_LABELS } from '../lib/access'
@@ -19,7 +19,14 @@ export function Loads() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({})
   const [err, setErr] = useState('')
+  const [archived, setArchived] = useState([]) // arxivdagi yuklamalar (kerak bo'lganda yuklanadi)
+  const [showArchived, setShowArchived] = useState(false)
   const writable = canWrite('loads')
+
+  const loadArchived = async () => {
+    try { setArchived((await api('/workloads?all=1')).filter((w) => w.archived)) } catch { /* jim */ }
+  }
+  const toggleArchived = () => { if (!showArchived) loadArchived(); setShowArchived((v) => !v) }
 
   const openAdd = () => { setEditing(null); setForm({}); setErr(''); setOpen(true) }
   const openEdit = (l) => { setEditing(l); setForm({ teacherId: l.teacherId, subjectId: l.subjectId, groupIds: l.groups?.map((x) => x.groupId) || [], semester: l.semester, weeklyHours: l.weeklyHours, type: l.type || 'Amaliy' }); setErr(''); setOpen(true) }
@@ -32,12 +39,18 @@ export function Loads() {
       setOpen(false); setForm({}); setEditing(null)
     } catch (e) { setErr(e.message || 'Saqlashda xatolik') }
   }
-  const remove = async (l) => {
-    if (!confirm("O'chirishni tasdiqlaysizmi?")) return
-    try { await db.remove('loads', l.id) } catch (e) { alert(e.message || "O'chirishda xatolik") }
+  // Yuklama HECH QACHON butunlay o'chmaydi — faqat arxivga ko'chadi, kerak bo'lsa tiklanadi
+  const archive = async (l) => {
+    if (!confirm("Bu yuklama arxivga ko'chirilsinmi? Butunlay o'chmaydi, keyin tiklash mumkin.")) return
+    try { await db.remove('loads', l.id); if (showArchived) loadArchived() } catch (e) { alert(e.message || "Arxivlashda xatolik") }
+  }
+  const restore = async (l) => {
+    try { await api(`/workloads/${l.id}/restore`, { method: 'POST' }); retry('loads'); loadArchived() } catch (e) { alert(e.message || "Tiklashda xatolik") }
   }
   const nm = (coll, id) => db.get(coll).find((x) => x.id === Number(id))?.name || db.get(coll).find((x) => x.id === Number(id))?.fullName || '—'
   const filteredLoads = loads.filter((l) => Object.values(l).join(' ').toLowerCase().includes(q.toLowerCase()))
+  const filteredArchived = showArchived ? archived.filter((l) => Object.values(l).join(' ').toLowerCase().includes(q.toLowerCase())) : []
+  const displayRows = [...filteredLoads, ...filteredArchived]
   const typeColor = (t) => (t === 'Maʼruza' ? 'blue' : t === 'Seminar' ? 'amber' : 'gray')
 
   return (
@@ -45,10 +58,17 @@ export function Loads() {
       <PageHeader title="O'quv yuklamasi" count={loads.length}
         action={writable ? <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Qo'shish</button> : null} />
       <SearchBar value={q} onChange={setQ} />
-      <div className="mb-4 inline-flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800/60">
-        {[['list', "Yuklama ro'yxati"], ['teacher', "O'qituvchi yuklamasi"]].map(([id, l]) => (
-          <button key={id} onClick={() => setTab(id)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${tab === id ? 'bg-brand text-white' : 'text-slate-500'}`}>{l}</button>
-        ))}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800/60">
+          {[['list', "Yuklama ro'yxati"], ['teacher', "O'qituvchi yuklamasi"]].map(([id, l]) => (
+            <button key={id} onClick={() => setTab(id)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${tab === id ? 'bg-brand text-white' : 'text-slate-500'}`}>{l}</button>
+          ))}
+        </div>
+        {tab === 'list' && writable && (
+          <button onClick={toggleArchived} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+            <Archive size={15} /> {showArchived ? 'Arxivni yashirish' : 'Arxivni ko\'rsatish'}
+          </button>
+        )}
       </div>
       {(loading || failed) && loads.length === 0 ? (
         <DataState loading={loading} onRetry={() => retry('loads')} />
@@ -57,7 +77,7 @@ export function Loads() {
       ) : (
       <Table
         columns={writable ? ['Oʻqituvchi', 'Fan', 'Turi', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami', 'Amallar'] : ['Oʻqituvchi', 'Fan', 'Turi', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami']}
-        rows={filteredLoads}
+        rows={displayRows}
         empty="Maʼlumot topilmadi"
         renderRow={(l) => {
           // Fan soati — shu yuklamaning o'zida (weeklyHours, guruhlar soniga qaramasdan BIR MARTA);
@@ -67,10 +87,15 @@ export function Loads() {
           const rating = lgroups.length ? Math.round(totalStudents * 0.8 * 10) / 10 : null
           const total = Math.round(((l.weeklyHours || 0) + (rating || 0)) * 10) / 10
           return (
-          <tr key={l.id} className="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
+          <tr key={l.id} className={`border-b border-slate-100 last:border-0 dark:border-slate-800/60 ${l.archived ? 'opacity-60' : ''}`}>
             <td className="px-4 py-3">{nm('teachers', l.teacherId)}</td>
             <td className="px-4 py-3">{nm('subjects', l.subjectId)}</td>
-            <td className="px-4 py-3"><Badge color={typeColor(l.type)}>{l.type || 'Amaliy'}</Badge></td>
+            <td className="px-4 py-3">
+              <div className="flex flex-wrap items-center gap-1">
+                <Badge color={typeColor(l.type)}>{l.type || 'Amaliy'}</Badge>
+                {l.archived && <Badge color="gray">Arxiv</Badge>}
+              </div>
+            </td>
             <td className="px-4 py-3">{lgroups.map((x) => x.group?.name).filter(Boolean).join(', ') || '—'}</td>
             <td className="px-4 py-3">{l.semester}</td>
             <td className="px-4 py-3">{l.weeklyHours ?? '—'}</td>
@@ -79,8 +104,14 @@ export function Loads() {
             {writable && (
               <td className="px-4 py-3">
                 <div className="flex items-center gap-1">
-                  <button onClick={() => openEdit(l)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand dark:hover:bg-slate-800"><Pencil size={15} /></button>
-                  <button onClick={() => remove(l)} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/40"><Trash2 size={15} /></button>
+                  {l.archived ? (
+                    <button onClick={() => restore(l)} title="Arxivdan tiklash" className="rounded-md p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/40"><RotateCcw size={15} /></button>
+                  ) : (
+                    <>
+                      <button onClick={() => openEdit(l)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand dark:hover:bg-slate-800"><Pencil size={15} /></button>
+                      <button onClick={() => archive(l)} title="Arxivlash (butunlay o'chmaydi)" className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/40"><Trash2 size={15} /></button>
+                    </>
+                  )}
                 </div>
               </td>
             )}

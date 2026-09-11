@@ -9,7 +9,7 @@ export async function loadData(prisma, semester = 1, opts = {}) {
   const { afternoonCourses = [1] } = opts
   const [workloads, rooms, teacherConstraints] = await Promise.all([
     prisma.workload.findMany({
-      where: { semester },
+      where: { semester, archived: false }, // arxivlangan yuklama jadval tuzishda hisobga olinmaydi
       include: { groups: { include: { group: true } }, teacher: true, subject: true },
     }),
     prisma.room.findMany({ include: { permissions: true, building: true } }),
