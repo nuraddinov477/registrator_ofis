@@ -219,17 +219,31 @@ scheduleRouter.get('/runs/:id/violations', asyncHandler(async (req, res) => {
   const gName = new Map(groups.map((x) => [x.id, x.name]))
   const tName = new Map(teachers.map((x) => [x.id, x.fullName]))
   const rName = new Map(rooms.map((x) => [x.id, x.name]))
-  const lessonInfo = (e) => ({
-    subject: sName.get(e.subjectId) || `#${e.subjectId}`,
-    group: gName.get(e.groupId) || `#${e.groupId}`,
-    teacher: tName.get(e.teacherId) || `#${e.teacherId}`,
-    room: rName.get(e.roomId) || `#${e.roomId}`,
-    type: e.type,
+
+  // Potok: bitta dars bir nechta guruhga BIRGA o'tiladi — ScheduleEntry'da har guruh
+  // uchun alohida qator bo'ladi (day/pair/teacher/room/subject bir xil, faqat groupId
+  // farq qiladi). Bu haqiqiy to'qnashuv EMAS — shu sabab o'qituvchi/xona tekshiruvidan
+  // oldin bunday qatorlar BITTA "dars"ga birlashtiriladi (guruh tekshiruvida esa har bir
+  // guruhning o'z qatori muhim — ikkita alohida darsga tushib qolgan bo'lsa, bu real xato).
+  const lessonKey = (e) => `${e.day}|${e.pair}|${e.teacherId}|${e.roomId}|${e.subjectId}|${e.type}`
+  const lessonMap = new Map()
+  for (const e of entries) {
+    const k = lessonKey(e)
+    if (!lessonMap.has(k)) lessonMap.set(k, { ...e, groupIds: [] })
+    lessonMap.get(k).groupIds.push(e.groupId)
+  }
+  const lessons = [...lessonMap.values()]
+  const lessonInfo = (l) => ({
+    subject: sName.get(l.subjectId) || `#${l.subjectId}`,
+    group: l.groupIds.map((gid) => gName.get(gid) || `#${gid}`).join(', '),
+    teacher: tName.get(l.teacherId) || `#${l.teacherId}`,
+    room: rName.get(l.roomId) || `#${l.roomId}`,
+    type: l.type,
   })
 
-  const byKey = (keyFn) => {
+  const byKey = (list, keyFn) => {
     const m = new Map()
-    for (const e of entries) {
+    for (const e of list) {
       const k = keyFn(e)
       if (!m.has(k)) m.set(k, [])
       m.get(k).push(e)
@@ -238,8 +252,8 @@ scheduleRouter.get('/runs/:id/violations', asyncHandler(async (req, res) => {
   }
 
   const violations = []
-  const buildSection = (type, keyFn, nameOf) => {
-    const m = byKey(keyFn)
+  const buildSection = (type, list, keyFn, nameOf) => {
+    const m = byKey(list, keyFn)
     for (const [k, es] of m) {
       if (es.length < 2) continue
       const [entityId, day, pair] = k.split('|').map(Number)
@@ -250,9 +264,13 @@ scheduleRouter.get('/runs/:id/violations', asyncHandler(async (req, res) => {
       })
     }
   }
-  buildSection('group', (e) => `${e.groupId}|${e.day}|${e.pair}`, (id) => gName.get(id) || `#${id}`)
-  buildSection('teacher', (e) => `${e.teacherId}|${e.day}|${e.pair}`, (id) => tName.get(id) || `#${id}`)
-  buildSection('room', (e) => `${e.roomId}|${e.day}|${e.pair}`, (id) => rName.get(id) || `#${id}`)
+  // Guruh: har qatorning o'zi (bitta guruh ikkita alohida darsga tushib qolsa — real xato)
+  buildSection('group', entries.map((e) => ({ ...e, groupIds: [e.groupId] })),
+    (e) => `${e.groupId}|${e.day}|${e.pair}`, (id) => gName.get(id) || `#${id}`)
+  // O'qituvchi va xona: potok birlashtirilgan darslar ("lessons") — bir xil o'qituvchi/xona
+  // ikkita HAQIQATDA BOSHQA dars (boshqa fan/tur yoki boshqa o'qituvchi/xona) bilan to'qnashsa
+  buildSection('teacher', lessons, (l) => `${l.teacherId}|${l.day}|${l.pair}`, (id) => tName.get(id) || `#${id}`)
+  buildSection('room', lessons, (l) => `${l.roomId}|${l.day}|${l.pair}`, (id) => rName.get(id) || `#${id}`)
 
   violations.sort((a, b) => a.day - b.day || a.pair - b.pair || a.type.localeCompare(b.type))
   res.json({ hardScore: run.hardScore, violations })
