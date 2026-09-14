@@ -6,6 +6,7 @@ import { Modal, Field, Badge, SearchableSelect } from '../components/ui'
 import TeacherConstraintsModal from '../components/TeacherConstraintsModal'
 import ScheduleExportModal from '../components/ScheduleExportModal'
 import ScheduleDiagnostics from '../components/ScheduleDiagnostics'
+import ScheduleViolations from '../components/ScheduleViolations'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const DAY_COLORS = [
@@ -41,9 +42,14 @@ export default function Schedule() {
   const [genOpen, setGenOpen] = useState(false)
   const [semester, setSemester] = useState('1')
   const [seconds, setSeconds] = useState(5)
-  const [afternoonCourses, setAfternoonCourses] = useState([1]) // obeddan keyingi (2-)smenaga qo'yiladigan kurslar
+  // Obeddan keyingi (2-)smenaga biriktirilgan GURUH ID'lari (superadmin har bir guruhni
+  // alohida tanlaydi). null = hali ishga tushmagan (guruhlar yuklangach 1-kurs standart bo'ladi).
+  const [afternoonGroupIds, setAfternoonGroupIds] = useState(null)
+  const [groupFilter, setGroupFilter] = useState('') // guruh ro'yxatida qidirish
   const [diag, setDiag] = useState(null) // "Tekshirish" natijasi (jadval yaratmasdan)
   const [diagBusy, setDiagBusy] = useState(false)
+  const [violations, setViolations] = useState(null) // "qattiq buzilish" bosilganda — aniq manzillar
+  const [violBusy, setViolBusy] = useState(false)
   const [busy, setBusy] = useState('') // generatsiya davom etayotgan bo'lsa — holat matni
   // Jadval amal qilish sana oralig'i (dan — gacha) — lokalda saqlanadi
   const [date, setDate] = useState(() => localStorage.getItem('smartjadval-schedule-date') || new Date().toISOString().slice(0, 10))
@@ -55,6 +61,11 @@ export default function Schedule() {
   const canGenerate = role === ROLES.SUPER || role === ROLES.OPERATOR
 
   const run = runs.find((r) => r.id === runId) || null
+  const selectedAfternoon = afternoonGroupIds || new Set()
+  const courseNumbers = [...new Set(groups.map((g) => g.course))].sort((a, b) => a - b)
+  const filteredGroups = groups
+    .filter((g) => !groupFilter || g.name.toLowerCase().includes(groupFilter.toLowerCase()))
+    .sort((a, b) => a.course - b.course || a.name.localeCompare(b.name))
 
   // Boshlang'ich: run'lar ro'yxati + guruhlar. Eng oxirgi tayyor jadval tanlanadi.
   const loadMeta = async (selectId) => {
@@ -63,6 +74,9 @@ export default function Schedule() {
       const [rs, gs] = await Promise.all([api('/schedule/runs?all=1'), api('/groups')])
       setRuns(rs); setGroups(gs); setErr('')
       setGroupId((cur) => cur ?? gs[0]?.id ?? null)
+      // Standart: 1-kurs guruhlari 2-smenaga (faqat birinchi marta, foydalanuvchi
+      // keyin o'zgartirgan bo'lsa ustidan yozilmaydi)
+      setAfternoonGroupIds((cur) => cur ?? new Set(gs.filter((g) => g.course === 1).map((g) => g.id)))
       const active = rs.filter((r) => !r.archived)
       const pick = selectId ?? (active.find((r) => r.status === 'done') || active[0] || rs[0])?.id ?? null
       setRunId((cur) => selectId ?? cur ?? pick)
@@ -81,6 +95,7 @@ export default function Schedule() {
   // Run yoki guruh o'zgarsa — jadvalni qayta yuklaymiz.
   // O'qituvchi rolida: o'z jadvali (teacher-grid, teacherId token'dan). Boshqalar: guruh jadvali.
   useEffect(() => {
+    setViolations(null)
     if (!runId) { setGrid(null); setAvail(null); setRoomAvail(null); return }
     let alive = true
     // O'qituvchilar bandligi ko'rinishi (faqat o'qituvchi bo'lmagan rollar uchun)
@@ -112,10 +127,41 @@ export default function Schedule() {
     setDiagBusy(true); setErr('')
     try {
       const r = await api('/schedule/diagnose', {
-        method: 'POST', body: { semester: Number(semester), afternoonCourses },
+        method: 'POST', body: { semester: Number(semester), afternoonGroups: [...(afternoonGroupIds || [])] },
       })
       setDiag(r)
     } catch (e) { setErr(e.message) } finally { setDiagBusy(false) }
+  }
+
+  // "qattiq buzilish: N" bosilganda — aniq qaysi kun/juftlikda guruh/o'qituvchi/xona
+  // to'qnashganini ko'rsatadi (yopiq bo'lsa ochadi, ochiq bo'lsa yopadi)
+  const toggleViolations = async () => {
+    if (violations) { setViolations(null); return }
+    if (!runId) return
+    setViolBusy(true); setErr('')
+    try {
+      const r = await api(`/schedule/runs/${runId}/violations`)
+      setViolations(r.violations)
+    } catch (e) { setErr(e.message) } finally { setViolBusy(false) }
+  }
+
+  // Bitta guruhning smenasini almashtiradi (2-smena ro'yxatiga qo'shadi/olib tashlaydi)
+  const toggleGroupShift = (gid) => {
+    setAfternoonGroupIds((prev) => {
+      const next = new Set(prev || [])
+      if (next.has(gid)) next.delete(gid); else next.add(gid)
+      return next
+    })
+  }
+  // Butun kursni bir zumda 2-smenaga qo'shish/olib tashlash (tezkor ko'p tanlov)
+  const toggleCourseShift = (course) => {
+    const courseGroups = groups.filter((g) => g.course === course)
+    setAfternoonGroupIds((prev) => {
+      const cur = new Set(prev || [])
+      const allOn = courseGroups.length > 0 && courseGroups.every((g) => cur.has(g.id))
+      for (const g of courseGroups) { if (allOn) cur.delete(g.id); else cur.add(g.id) }
+      return cur
+    })
   }
 
   // Jadval yaratish: generate → done bo'lguncha poll → natijani ko'rsatish.
@@ -123,7 +169,7 @@ export default function Schedule() {
     setGenOpen(false); setBusy('Boshlanmoqda…'); setErr('')
     try {
       const { runId: newId } = await api('/schedule/generate', {
-        method: 'POST', body: { semester: Number(semester), maxMs: Number(seconds) * 1000, afternoonCourses },
+        method: 'POST', body: { semester: Number(semester), maxMs: Number(seconds) * 1000, afternoonGroups: [...(afternoonGroupIds || [])] },
       })
       let final = null
       for (let i = 0; i < 150; i++) {
@@ -302,12 +348,30 @@ export default function Schedule() {
         {run && (
           <div className="flex items-center gap-2 pb-2">
             {statusBadge(run.status)}
-            <Badge color="gray">qattiq buzilish: {run.hardScore ?? '—'}</Badge>
+            <button onClick={toggleViolations} disabled={violBusy} title="Qattiq buzilishlar qayerda ekanini ko'rsatish"
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium disabled:opacity-50 ${
+                run.hardScore ? 'bg-red-500/15 text-red-500 hover:bg-red-500/25' : 'bg-slate-500/15 text-slate-400 hover:bg-slate-500/25'
+              }`}>
+              {violBusy && <Loader2 size={11} className="animate-spin" />} qattiq buzilish: {run.hardScore ?? '—'}
+            </button>
             <Badge color="blue">yumshoq: {run.softScore ?? '—'}</Badge>
             <span className="text-xs text-slate-400">{dt(run.createdAt)}</span>
           </div>
         )}
       </div>
+
+      {/* "qattiq buzilish" bosilganda — aniq qayerda to'qnashuv borligi */}
+      {violations && (
+        <div className="mb-4">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              Qattiq buzilishlar ({violations.length})
+            </span>
+            <button onClick={() => setViolations(null)} className="text-xs text-slate-400 hover:text-brand">Yopish</button>
+          </div>
+          <ScheduleViolations violations={violations} />
+        </div>
+      )}
 
       {/* "Tekshirish" natijasi — jadval yaratmasdan ma'lumotdagi muammolar */}
       {diag && (
@@ -419,13 +483,13 @@ export default function Schedule() {
           <Field label="Optimallashtirish vaqti (soniya)">
             <input className="input" type="number" min="1" max="120" value={seconds} onChange={(e) => setSeconds(e.target.value)} />
           </Field>
-          <Field label="Obeddan keyingi (2-)smenaga qo'yiladigan kurslar">
+          <Field label="Obeddan keyingi (2-)smena — kurs bo'yicha tezkor tanlash">
             <div className="flex flex-wrap gap-2">
-              {[1, 2, 3, 4, 5, 6].map((c) => {
-                const on = afternoonCourses.includes(c)
+              {courseNumbers.map((c) => {
+                const courseGroups = groups.filter((g) => g.course === c)
+                const on = courseGroups.length > 0 && courseGroups.every((g) => selectedAfternoon.has(g.id))
                 return (
-                  <button key={c} type="button"
-                    onClick={() => setAfternoonCourses((prev) => on ? prev.filter((x) => x !== c) : [...prev, c])}
+                  <button key={c} type="button" onClick={() => toggleCourseShift(c)}
                     className={`h-9 min-w-[3rem] rounded-lg border px-2 text-sm transition ${on ? 'border-brand bg-brand/10 text-brand' : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}>
                     {c}-kurs
                   </button>
@@ -433,8 +497,26 @@ export default function Schedule() {
               })}
             </div>
             <p className="mt-1.5 text-xs text-slate-400">
-              Belgilangan kurslar — 4, 5, 6-juftlik (obeddan keyin); yuklama sig'masa 2 va 3-juftlikка ham to'kiladi (1-juftlik hech qachon). Qolganlari — 1, 2, 3, 4-juftlik (ertalab).
+              2-smena — 4, 5, 6-juftlik (obeddan keyin); yuklama sig'masa 2 va 3-juftlikка ham to'kiladi (1-juftlik hech qachon). 1-smena — 1, 2, 3, 4-juftlik (ertalab). Kurs tugmasi shu kursdagi barcha guruhlarni birdan belgilaydi — pastda har bir guruhni alohida ham o'zgartirish mumkin.
             </p>
+          </Field>
+          <Field label={`Guruh bo'yicha alohida (${selectedAfternoon.size} ta 2-smenada)`}>
+            <input className="input mb-2" placeholder="Guruh qidirish…" value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} />
+            <div className="max-h-52 space-y-0.5 overflow-y-auto rounded-lg border border-slate-200 p-1.5 dark:border-slate-700">
+              {filteredGroups.length === 0 && <p className="px-2 py-1 text-xs text-slate-400">Guruh topilmadi</p>}
+              {filteredGroups.map((g) => {
+                const on = selectedAfternoon.has(g.id)
+                return (
+                  <button key={g.id} type="button" onClick={() => toggleGroupShift(g.id)}
+                    className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <span>{g.name} <span className="text-xs text-slate-400">({g.course}-kurs)</span></span>
+                    <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${on ? 'bg-brand/15 text-brand' : 'bg-slate-500/10 text-slate-400'}`}>
+                      {on ? '2-smena' : '1-smena'}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </Field>
           <div className="flex justify-end gap-2 pt-2">
             <button className="btn-ghost" onClick={() => setGenOpen(false)}>Bekor</button>

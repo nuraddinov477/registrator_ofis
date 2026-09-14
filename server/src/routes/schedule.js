@@ -17,13 +17,14 @@ scheduleRouter.post('/generate', requireRole('Super Admin', 'Fakultet operatori'
   if (restrictionBlocks(req.user, 'schedule', 'write')) return res.status(403).json({ error: 'Ruxsat yetarli emas (cheklangan)' })
   const semester = Number(req.body?.semester) || 1
   const maxMs = Math.min(120_000, Number(req.body?.maxMs) || 5000)
-  // Qaysi kurslar obeddan keyingi (2-)smenaga — 4,5,6-juftlik. Standart: 1-kurs.
-  const afternoonCourses = Array.isArray(req.body?.afternoonCourses)
-    ? [...new Set(req.body.afternoonCourses.map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 6))]
-    : [1]
+  // Qaysi GURUHlar obeddan keyingi (2-)smenaga — 4,5,6-juftlik (superadmin har bir
+  // guruhni alohida tanlaydi, frontend'dagi kurs chipslari shularni ko'p tanlaydi).
+  const afternoonGroups = Array.isArray(req.body?.afternoonGroups)
+    ? [...new Set(req.body.afternoonGroups.map(Number).filter((n) => Number.isInteger(n) && n > 0))]
+    : []
 
   const run = await prisma.schedulingRun.create({ data: { semester, status: 'running' } })
-  startGenerateJob({ runId: run.id, semester, maxMs, afternoonCourses })
+  startGenerateJob({ runId: run.id, semester, maxMs, afternoonGroups })
   await audit('Jadval generatsiyasi boshlandi', `run #${run.id}`, req)
 
   res.status(202).json({
@@ -39,14 +40,14 @@ scheduleRouter.post('/generate', requireRole('Super Admin', 'Fakultet operatori'
 // qolishi mumkin va nega. "Jadval yaratish" dan oldin tekshirish uchun.
 scheduleRouter.post('/diagnose', requireRole('Super Admin', 'Fakultet operatori'), asyncHandler(async (req, res) => {
   const semester = Number(req.body?.semester) || 1
-  const afternoonCourses = Array.isArray(req.body?.afternoonCourses)
-    ? [...new Set(req.body.afternoonCourses.map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= 6))]
-    : [1]
-  const ctx = await loadData(prisma, semester, { afternoonCourses })
+  const afternoonGroups = Array.isArray(req.body?.afternoonGroups)
+    ? [...new Set(req.body.afternoonGroups.map(Number).filter((n) => Number.isInteger(n) && n > 0))]
+    : []
+  const ctx = await loadData(prisma, semester, { afternoonGroups })
   const diagnostics = buildDiagnostics(ctx)
   const totalEvents = ctx.events.length
   const problems = diagnostics.groupOverload.length + diagnostics.teacherOverload.length + diagnostics.blocked.length
-  res.json({ semester, afternoonCourses, totalEvents, ok: problems === 0, diagnostics })
+  res.json({ semester, afternoonGroups, totalEvents, ok: problems === 0, diagnostics })
 }))
 
 // GET /api/schedule/runs  — yaratilgan jadvallar ro'yxati.
@@ -199,6 +200,62 @@ scheduleRouter.get('/runs/:id/room-availability', asyncHandler(async (req, res) 
   const total = PAIRS * DAYS
   const result = [...byRoom.values()].map((r) => ({ ...r, free: total - r.busy }))
   res.json({ days: DAY_NAMES, pairs: PAIRS, rooms: result })
+}))
+
+// GET /api/schedule/runs/:id/violations
+// "Qattiq buzilish" (hardScore) sonining ORQASIDAGI aniq manzillari: qaysi kun/juftlikda
+// qaysi guruh/o'qituvchi/xona uchun 2+ dars bir vaqtga to'qnashib qolgan (to'qnashgan
+// darslarning har biri — fan/guruh/o'qituvchi/xona bilan birga).
+scheduleRouter.get('/runs/:id/violations', asyncHandler(async (req, res) => {
+  const id = Number(req.params.id)
+  const run = await prisma.schedulingRun.findUnique({ where: { id } })
+  if (!run) return res.status(404).json({ error: 'Run topilmadi' })
+
+  const [entries, subjects, groups, teachers, rooms] = await Promise.all([
+    prisma.scheduleEntry.findMany({ where: { runId: id } }),
+    prisma.subject.findMany(), prisma.group.findMany(), prisma.teacher.findMany(), prisma.room.findMany(),
+  ])
+  const sName = new Map(subjects.map((x) => [x.id, x.name]))
+  const gName = new Map(groups.map((x) => [x.id, x.name]))
+  const tName = new Map(teachers.map((x) => [x.id, x.fullName]))
+  const rName = new Map(rooms.map((x) => [x.id, x.name]))
+  const lessonInfo = (e) => ({
+    subject: sName.get(e.subjectId) || `#${e.subjectId}`,
+    group: gName.get(e.groupId) || `#${e.groupId}`,
+    teacher: tName.get(e.teacherId) || `#${e.teacherId}`,
+    room: rName.get(e.roomId) || `#${e.roomId}`,
+    type: e.type,
+  })
+
+  const byKey = (keyFn) => {
+    const m = new Map()
+    for (const e of entries) {
+      const k = keyFn(e)
+      if (!m.has(k)) m.set(k, [])
+      m.get(k).push(e)
+    }
+    return m
+  }
+
+  const violations = []
+  const buildSection = (type, keyFn, nameOf) => {
+    const m = byKey(keyFn)
+    for (const [k, es] of m) {
+      if (es.length < 2) continue
+      const [entityId, day, pair] = k.split('|').map(Number)
+      violations.push({
+        type, entityId, entityName: nameOf(entityId),
+        day, dayName: DAY_NAMES[day], pair,
+        lessons: es.map(lessonInfo),
+      })
+    }
+  }
+  buildSection('group', (e) => `${e.groupId}|${e.day}|${e.pair}`, (id) => gName.get(id) || `#${id}`)
+  buildSection('teacher', (e) => `${e.teacherId}|${e.day}|${e.pair}`, (id) => tName.get(id) || `#${id}`)
+  buildSection('room', (e) => `${e.roomId}|${e.day}|${e.pair}`, (id) => rName.get(id) || `#${id}`)
+
+  violations.sort((a, b) => a.day - b.day || a.pair - b.pair || a.type.localeCompare(b.type))
+  res.json({ hardScore: run.hardScore, violations })
 }))
 
 // ─────────────────────────── Qo'lda tahrirlash (faqat Super Admin) ───────────────────────────
