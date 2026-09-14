@@ -1,4 +1,4 @@
-import { DAYS, dayOf, pairOf } from './timeslots.js'
+import { DAYS, dayOf, pairOf, AFTERNOON_PREFERRED } from './timeslots.js'
 
 // Dars turi tartibi: ma'ruza → seminar → amaliy (talabaga mantiqan avval nazariya,
 // keyin amaliyot). Workload.type / event.type shu qiymatlardan biri (default "Amaliy").
@@ -7,7 +7,7 @@ export const TYPE_RANK = { "Maʼruza": 0, Seminar: 1, Amaliy: 2 }
 // Yumshoq cheklash vaznlari (sozlanadigan). Qattiq cheklash Occupancy.hard orqali.
 export const WEIGHTS = {
   teacherGap: 7, // o'qituvchi "derazasi" — bo'sh keyin band, keyin yana bo'sh bo'lib qolmasin
-  groupGap: 7, // guruh (talaba) "derazasi" — o'qituvchi bilan bir xil darajada muhim
+  groupGap: 10, // guruh (talaba) "derazasi" — kun ichidagi bo'sh oraliq VA kun boshidan birinchi darsgacha bo'sh vaqt (masalan kuni 1-juftlik bo'sh-u dars 3-juftlikdan boshlansa). Talabalar uchun ustuvorlik teacherGap'dan YUQORI — avval guruh, keyin o'qituvchi derazasi kamaytiriladi
   consecutive: 3, // 4 tadan ortiq ketma-ket dars (har ortig'i)
   subjectSpread: 100, // bir fan bir kunda ikkinchi marta kelsa (ketma-ket bo'lsa ham, orada tanaffus bo'lsa ham) — boshqa kunga ko'chirilishi kerak. Vazn ATAYIN baland: teacherGap/lonePair/groupDayMin kabi "kunlarni siqish" tendensiyasidan HAR DOIM ustun turishi kerak (bir fan kuni muhimroq)
   subjectConsecutiveDays: 18, // bir fan ketma-ket kunlarga tushsa (masalan Dush+Sesh) — 1 kun oralik yetarli, ortiqcha tanaffus shart emas
@@ -26,11 +26,16 @@ export const WEIGHTS = {
   MAX_CONSEC: 4,
 }
 
-// Bir kundagi band juftliklar bo'yicha "oyna" (gap) soni = (max-min+1) - count
-function gapsInDay(pairs) {
-  if (pairs.length < 2) return 0
+// Bir kundagi "oyna" (gap) soni: kun boshi (dayStart)dan birinchi darsgacha bo'sh
+// juftliklar + darslar orasidagi bo'sh juftliklar — ikkalasi ham xuddi shunday
+// behuda kutish (talaba/o'qituvchi band bo'lmagan vaqtda o'qishga kelib turishi).
+// dayStart=1 (standart) — kun 1-juftlikdan boshlanishi kerak deb hisoblanadi.
+function gapsInDay(pairs, dayStart = 1) {
+  if (pairs.length === 0) return 0
   const min = Math.min(...pairs), max = Math.max(...pairs)
-  return (max - min + 1) - pairs.length
+  const leading = Math.max(0, min - dayStart)
+  const internal = (max - min + 1) - pairs.length
+  return leading + internal
 }
 
 // Eng uzun ketma-ketlikdan 4 dan ortig'i uchun jazo
@@ -52,6 +57,9 @@ export function groupCost(groupEvents, W = WEIGHTS) {
   const rooms = new Set()
   const subjectDays = new Map() // subjectId -> Set(day) — kunlar oralig'ini tekshirish uchun
   let cost = 0
+  // Guruhning smenasiga qarab kun qaysi juftlikdan boshlanishi "kerak" (1-smena — 1,
+  // 2-smena — 4) — shundan oldingi bo'sh vaqt ham "oyna" hisoblanadi (gapsInDay)
+  const dayStart = groupEvents.find((e) => e.slot >= 0)?.afternoonShift ? AFTERNOON_PREFERRED[0] : 1
   for (const e of groupEvents) {
     if (e.slot < 0) continue
     perDay[dayOf(e.slot)].push(e)
@@ -74,7 +82,7 @@ export function groupCost(groupEvents, W = WEIGHTS) {
   for (const day of perDay) {
     const pairs = day.map((e) => pairOf(e.slot))
     counts.push(day.length)
-    cost += gapsInDay(pairs) * W.groupGap
+    cost += gapsInDay(pairs, dayStart) * W.groupGap
     cost += consecutivePenalty(pairs) * W.consecutive
     // Kunlik darslar soni: 4 tadan oshmasin, band kunda 1 tadan iborat bo'lmasin (2 tadan kam)
     if (day.length > 4) cost += (day.length - 4) * W.groupDayMax
