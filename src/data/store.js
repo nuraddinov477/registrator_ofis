@@ -54,7 +54,7 @@ export const retry = refresh
 
 export const db = {
   get: (coll) => { ensureLoaded(coll); return cache[coll] || EMPTY },
-  async add(coll, item) { const ep = ENDPOINTS[coll]; if (!ep) return; await api(ep, { method: 'POST', body: item }); await refresh(coll); refresh('audit') },
+  async add(coll, item) { const ep = ENDPOINTS[coll]; if (!ep) return; const r = await api(ep, { method: 'POST', body: item }); await refresh(coll); refresh('audit'); return r },
   async update(coll, id, patch) { const ep = ENDPOINTS[coll]; if (!ep) return; await api(`${ep}/${id}`, { method: 'PUT', body: patch }); await refresh(coll); refresh('audit') },
   async remove(coll, id) { const ep = ENDPOINTS[coll]; if (!ep) return; await api(`${ep}/${id}`, { method: 'DELETE' }); await refresh(coll); refresh('audit') },
   async clear(coll) { const ep = ENDPOINTS[coll]; if (!ep) return null; const r = await api(ep, { method: 'DELETE' }); await refresh(coll); return r },

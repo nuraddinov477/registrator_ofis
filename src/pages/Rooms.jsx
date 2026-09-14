@@ -5,15 +5,12 @@ import { canWrite } from '../lib/access'
 import { SearchBar, Table, Modal, Field, Badge, DataState, SearchableSelect } from '../components/ui'
 import RoomPermissionsModal from '../components/RoomPermissionsModal'
 
-// Xona jihoz/xususiyatlari — belgilash mumkin bo'lgan sobit ro'yxat
-const ROOM_FEATURES = ['Proyektor', 'Konditsioner', 'Interaktiv doska', 'Kompyuterlar', 'Ovoz tizimi', 'Internet (Wi-Fi)']
-const parseFeatures = (r) => { try { return JSON.parse(r?.features || '[]') } catch { return [] } }
-
 export default function Rooms() {
   const buildings = useCollection('buildings')
   const rooms = useCollection('rooms')
   const faculties = useCollection('faculties')
   const groups = useCollection('groups')
+  const subjects = useCollection('subjects')
   const roomPerms = useCollection('roomPermissions')
   const [tab, setTab] = useState('buildings')
   const [q, setQ] = useState('')
@@ -26,7 +23,7 @@ export default function Rooms() {
   const [fFaculty, setFFaculty] = useState('')    // xona filtri: fakultet → kurs → guruh kaskadi
   const [fCourse, setFCourse] = useState('')
   const [fGroup, setFGroup] = useState('')        // tanlansa — faqat shu guruhga ruxsat berilgan xonalar
-  const [customFeature, setCustomFeature] = useState('') // ro'yxatda yo'q xususiyat uchun qo'lda kiritish
+  const [subjectPick, setSubjectPick] = useState('') // fan qo'shish uchun tanlov
   const [permRoom, setPermRoom] = useState(null) // ruxsatlar oynasi ochilgan xona (maxsus)
 
   const isB = tab === 'buildings'
@@ -55,35 +52,49 @@ export default function Rooms() {
     return true
   })
 
-  // Xona → biriktirilgan guruh/yo'nalish/o'qituvchi nomlari (jadval ustuni uchun)
+  // Xona → biriktirilgan guruh/yo'nalish/o'qituvchi/fan nomlari (jadval ustuni uchun)
   const roomAssignees = (roomId) => roomPerms.filter((p) => p.roomId === roomId).map((p) => {
     if (p.groupId != null) return { name: p.group?.name || groups.find((g) => g.id === p.groupId)?.name || `guruh #${p.groupId}`, ex: !!p.exclusive }
     if (p.specialtyId != null) return { name: p.specialty?.name || `yo'nalish #${p.specialtyId}`, ex: false }
     if (p.teacherId != null) return { name: p.teacher?.fullName || `o'qituvchi #${p.teacherId}`, ex: false }
+    if (p.subjectId != null) return { name: p.subject?.name || subjects.find((s) => s.id === p.subjectId)?.name || `fan #${p.subjectId}`, ex: false }
     return null
   }).filter(Boolean)
+  // Xona → unga biriktirilgan fan ID'lari (forma uchun)
+  const roomSubjectIds = (roomId) => roomPerms.filter((p) => p.roomId === roomId && p.subjectId != null).map((p) => p.subjectId)
 
-  const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '' } : { name: '', buildingId: '', capacity: 30, kind: 'Maʼruza', type: 'umumiy', features: [] }); setCustomFeature(''); setOpen(true) }
-  const openEdit = (r) => { setEditing(r); setForm(isB ? r : { ...r, features: parseFeatures(r) }); setCustomFeature(''); setOpen(true) }
-  const save = (e) => {
+  const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '' } : { name: '', buildingId: '', capacity: 30, kind: 'Maʼruza', type: 'umumiy', subjectIds: [] }); setSubjectPick(''); setOpen(true) }
+  const openEdit = (r) => { setEditing(r); setForm(isB ? r : { ...r, subjectIds: roomSubjectIds(r.id) }); setSubjectPick(''); setOpen(true) }
+  const save = async (e) => {
     e.preventDefault()
+    const subjectIds = form.subjectIds || []
     const p = { ...form }
+    delete p.subjectIds
     if (isB) p.floors = Number(p.floors) || 1
-    else { p.capacity = Number(p.capacity) || 0; p.buildingId = Number(p.buildingId) || ''; p.features = JSON.stringify(p.features || []) }
-    editing ? db.update(coll, editing.id, p) : db.add(coll, p)
+    else { p.capacity = Number(p.capacity) || 0; p.buildingId = Number(p.buildingId) || '' }
+    const saved = editing ? await db.update(coll, editing.id, p) : await db.add(coll, p)
+    if (!isB) {
+      // Fan ruxsatlarini forma bilan moslashtirish: yo'qlarini o'chirish, yangilarini qo'shish
+      const roomId = editing ? editing.id : saved?.id
+      if (roomId) {
+        const existing = roomPerms.filter((rp) => rp.roomId === roomId && rp.subjectId != null)
+        const selected = new Set(subjectIds)
+        const existingIds = new Set(existing.map((rp) => rp.subjectId))
+        for (const rp of existing) { if (!selected.has(rp.subjectId)) await db.remove('roomPermissions', rp.id) }
+        for (const sid of selected) { if (!existingIds.has(sid)) await db.add('roomPermissions', { roomId, subjectId: sid }) }
+      }
+    }
     setOpen(false)
   }
-  const toggleFeature = (f) => {
-    const cur = form.features || []
-    setForm({ ...form, features: cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f] })
+  const addSubject = () => {
+    if (!subjectPick) return
+    const cur = form.subjectIds || []
+    const sid = Number(subjectPick)
+    if (!cur.includes(sid)) setForm({ ...form, subjectIds: [...cur, sid] })
+    setSubjectPick('')
   }
-  // Ro'yxatda mos xususiyat topilmasa — mas'ul xodim o'zi qo'lda kiritadi
-  const addCustomFeature = () => {
-    const v = customFeature.trim()
-    if (!v) return
-    const cur = form.features || []
-    if (!cur.includes(v)) setForm({ ...form, features: [...cur, v] })
-    setCustomFeature('')
+  const removeSubject = (sid) => {
+    setForm({ ...form, subjectIds: (form.subjectIds || []).filter((x) => x !== sid) })
   }
   const bName = (id) => buildings.find((b) => b.id === id)?.name || '—'
   const facName = (id) => faculties.find((f) => f.id === id)?.name || '—'
@@ -152,7 +163,7 @@ export default function Rooms() {
         <DataState loading={loading} onRetry={() => retry(coll)} />
       ) : (
       <Table
-        columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil', 'Fakultet'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Kirish', 'Biriktirilgan', 'Xususiyatlar']), ...(writable ? ['Amallar'] : [])]}
+        columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil', 'Fakultet'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Kirish', 'Biriktirilgan']), ...(writable ? ['Amallar'] : [])]}
         rows={list}
         renderRow={(r) => (
           <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/30">
@@ -175,13 +186,6 @@ export default function Rooms() {
                   {roomAssignees(r.id).length
                     ? roomAssignees(r.id).map((a, i) => <Badge key={i} color={a.ex ? 'amber' : 'blue'}>{a.name}{a.ex ? ' · faqat' : ''}</Badge>)
                     : <span className="text-slate-400">{r.type === 'maxsus' ? 'ruxsat yo‘q' : 'hammaga ochiq'}</span>}
-                </div>
-              </td>
-              <td className="px-4 py-3">
-                <div className="flex flex-wrap gap-1">
-                  {parseFeatures(r).length
-                    ? parseFeatures(r).map((f) => <Badge key={f} color="gray">{f}</Badge>)
-                    : <span className="text-slate-400">—</span>}
                 </div>
               </td>
             </>}
@@ -231,40 +235,30 @@ export default function Rooms() {
                 Kimlarga ruxsat berilganini saqlagach, jadvaldagi <KeyRound size={12} className="mb-0.5 inline" /> tugmasidan boshqarasiz.
               </p>
             )}
-            <Field label="Xususiyatlar">
+            <Field label="Fan">
               <div className="space-y-2.5">
-                <div className="flex flex-wrap gap-2">
-                  {ROOM_FEATURES.map((f) => {
-                    const checked = (form.features || []).includes(f)
-                    return (
-                      <label key={f} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition ${checked ? 'border-brand bg-brand/10 text-brand' : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}>
-                        <input type="checkbox" className="h-3.5 w-3.5 rounded" checked={checked} onChange={() => toggleFeature(f)} />
-                        {f}
-                      </label>
-                    )
-                  })}
-                </div>
                 <div className="flex gap-2">
-                  <input
-                    className="input flex-1"
-                    placeholder="Mos xususiyat topilmasa, shu yerga yozing..."
-                    value={customFeature}
-                    onChange={(e) => setCustomFeature(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomFeature() } }}
-                  />
-                  <button type="button" className="btn-ghost shrink-0" onClick={addCustomFeature}>Qo'shish</button>
+                  <div className="flex-1">
+                    <SearchableSelect value={subjectPick} onChange={setSubjectPick}
+                      options={subjects.filter((s) => !(form.subjectIds || []).includes(s.id)).map((s) => ({ value: s.id, label: s.name }))}
+                      placeholder="Fan qidirish..." />
+                  </div>
+                  <button type="button" className="btn-ghost shrink-0" onClick={addSubject}>Qo'shish</button>
                 </div>
-                {(form.features || []).some((f) => !ROOM_FEATURES.includes(f)) && (
+                {(form.subjectIds || []).length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
-                    {(form.features || []).filter((f) => !ROOM_FEATURES.includes(f)).map((f) => (
-                      <span key={f} className="inline-flex items-center gap-1 rounded-md bg-brand/10 px-2 py-1 text-xs text-brand">
-                        {f}
-                        <button type="button" onClick={() => toggleFeature(f)} className="hover:text-red-500"><X size={12} /></button>
+                    {(form.subjectIds || []).map((sid) => (
+                      <span key={sid} className="inline-flex items-center gap-1 rounded-md bg-brand/10 px-2 py-1 text-xs text-brand">
+                        {subjects.find((s) => s.id === sid)?.name || `#${sid}`}
+                        <button type="button" onClick={() => removeSubject(sid)} className="hover:text-red-500"><X size={12} /></button>
                       </span>
                     ))}
                   </div>
                 )}
               </div>
+              <p className="mt-1.5 text-xs text-slate-400">
+                Fan tanlansa, shu fanning darslari (qaysi guruh/o'qituvchi bo'lishidan qat'i nazar) bu xonaga ustuvor bo'ladi — "Maxsus" turida FAQAT shu fan(lar) kira oladi.
+              </p>
             </Field>
           </>}
           <div className="flex justify-end gap-2 pt-2">
