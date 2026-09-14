@@ -4,7 +4,7 @@ import { prisma, audit } from '../db.js'
 import { requireRole } from '../auth/middleware.js'
 import { restrictionBlocks } from '../auth/access.js'
 import { startGenerateJob } from '../engine/jobRunner.js'
-import { loadData } from '../engine/loadData.js'
+import { loadData, LARGE_ROOM_CAPACITY } from '../engine/loadData.js'
 import { buildDiagnostics } from '../engine/solve.js'
 import { DAY_NAMES, DAYS, PAIRS } from '../engine/timeslots.js'
 
@@ -239,6 +239,9 @@ async function roomEligibility({ roomId, groupId, teacherId }) {
   if (!group) return 'Guruh topilmadi'
   if (room.capacity < (group.size ?? 0)) {
     return `Xona sig'imi yetarli emas: "${room.name}" ${room.capacity} o'rinli, guruhda ${group.size} talaba`
+  }
+  if (room.capacity > LARGE_ROOM_CAPACITY && (group.size ?? 0) <= LARGE_ROOM_CAPACITY) {
+    return `"${room.name}" — katta auditoriya (${room.capacity} o'rin), faqat ${LARGE_ROOM_CAPACITY} dan ortiq talabali guruh/potok uchun ajratilgan (bu guruhda ${group.size} talaba)`
   }
   const bFac = room.building?.facultyId ?? null
   if (bFac != null && group.facultyId != null && bFac !== group.facultyId) {
