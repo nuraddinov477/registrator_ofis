@@ -77,9 +77,13 @@ export async function loadData(prisma, semester = 1, opts = {}) {
   // Event uchun xona mosligi: sig'im yetarli VA kirish ruxsati bor
   const roomAllowed = (room, ev) => {
     if (room.capacity < ev.groupSize) return false // qattiq cheklash 5
-    // Katta auditoriya (60+ o'rinli) — faqat 60 dan ortiq talabali guruh/potokka
-    // ajratiladi, kichik guruhlar uchun bekorga band qilinmaydi (qattiq cheklash 8)
-    if (room.capacity > LARGE_ROOM_CAPACITY && ev.groupSize <= LARGE_ROOM_CAPACITY) return false
+    // Katta auditoriya (60+ o'rinli) — FAQAT MA'RUZA turidagi darsda 60 dan ortiq
+    // talabali potokka ajratiladi (qattiq cheklash 8). Amaliy/Seminar (kichik guruh)
+    // darslarga qattiq taqiqlanmaydi — aks holda kichik xonasi umuman yo'q fakultetlar
+    // (masalan faqat "Katta zal"ga ega bino) hech qanday dars o'tkaza olmay qoladi.
+    // Bunday holatda ham ortiqcha sig'imli xona roomFit yumshoq jarimasi bilan kamroq
+    // afzal qilinadi, lekin oxirgi chora sifatida ishlatilishi mumkin.
+    if (room.capacity > LARGE_ROOM_CAPACITY && ev.groupSize <= LARGE_ROOM_CAPACITY && ev.type === 'Maʼruza') return false
     // Fakultet bino egaligi — "asosiy" bino (facultyId=null) hammaga ochiq, boshqa
     // fakultetning binosiga aralashmaydi (qattiq cheklash — bino qaysi fakultetniki
     // bo'lsa, faqat o'sha fakultet guruhlari shu bino xonalaridan foydalanadi)
@@ -174,9 +178,9 @@ export async function loadData(prisma, semester = 1, opts = {}) {
           ev.reason = `guruh ${ev.groupSize} kishilik — sig'imi yetarli xona yo'q (eng katta xona ${maxCap} o'rin)`
         } else if (fitByFaculty.length === 0) {
           ev.reason = "fakultet binosida (yoki asosiy binoda) sig'imi mos xona yo'q — boshqa fakultet binosidan foydalanib bo'lmaydi"
-        } else if (ev.groupSize <= LARGE_ROOM_CAPACITY
+        } else if (ev.type === 'Maʼruza' && ev.groupSize <= LARGE_ROOM_CAPACITY
           && fitByFaculty.every((r) => r.capacity > LARGE_ROOM_CAPACITY)) {
-          ev.reason = `guruh ${ev.groupSize} kishilik — mos sig'imli xonalarning barchasi katta auditoriya (${LARGE_ROOM_CAPACITY}+ o'rin), ular faqat ${LARGE_ROOM_CAPACITY} dan ortiq talabali darslarga ajratiladi`
+          ev.reason = `ma'ruza, guruh ${ev.groupSize} kishilik — mos sig'imli xonalarning barchasi katta auditoriya (${LARGE_ROOM_CAPACITY}+ o'rin), ular faqat ${LARGE_ROOM_CAPACITY} dan ortiq talabali ma'ruzalarga ajratiladi`
         } else {
           ev.reason = "faqat maxsus xonalar mos keladi, lekin bu guruh/o'qituvchi/yo'nalishga kirish ruxsati berilmagan"
         }
