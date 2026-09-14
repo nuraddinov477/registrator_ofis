@@ -10,6 +10,20 @@ import { DAY_NAMES, DAYS, PAIRS } from '../engine/timeslots.js'
 
 export const scheduleRouter = Router()
 
+// req.body.groupStartPairs — { [groupId]: startPair } (superadmin har bir guruhning
+// boshlanish juftligini alohida tanlaydi). Yaroqsiz/chegaradan tashqari qiymatlar
+// e'tiborsiz qoldiriladi (loadData.js'da ham standart 1'ga tushadi).
+const parseGroupStartPairs = (body) => {
+  const src = body?.groupStartPairs
+  if (!src || typeof src !== 'object' || Array.isArray(src)) return {}
+  const out = {}
+  for (const [gid, v] of Object.entries(src)) {
+    const g = Number(gid), p = Number(v)
+    if (Number.isInteger(g) && g > 0 && Number.isInteger(p) && p >= 1 && p <= PAIRS) out[g] = p
+  }
+  return out
+}
+
 // POST /api/schedule/generate  — fon jobni boshlaydi, darhol runId qaytaradi.
 // Faqat Super Admin va Fakultet operatori jadval yaratadi.
 // Holatni /runs/:id orqali kuzating (status: running → done/failed).
@@ -17,14 +31,10 @@ scheduleRouter.post('/generate', requireRole('Super Admin', 'Fakultet operatori'
   if (restrictionBlocks(req.user, 'schedule', 'write')) return res.status(403).json({ error: 'Ruxsat yetarli emas (cheklangan)' })
   const semester = Number(req.body?.semester) || 1
   const maxMs = Math.min(120_000, Number(req.body?.maxMs) || 5000)
-  // Qaysi GURUHlar obeddan keyingi (2-)smenaga — 4,5,6-juftlik (superadmin har bir
-  // guruhni alohida tanlaydi, frontend'dagi kurs chipslari shularni ko'p tanlaydi).
-  const afternoonGroups = Array.isArray(req.body?.afternoonGroups)
-    ? [...new Set(req.body.afternoonGroups.map(Number).filter((n) => Number.isInteger(n) && n > 0))]
-    : []
+  const groupStartPairs = parseGroupStartPairs(req.body)
 
   const run = await prisma.schedulingRun.create({ data: { semester, status: 'running' } })
-  startGenerateJob({ runId: run.id, semester, maxMs, afternoonGroups })
+  startGenerateJob({ runId: run.id, semester, maxMs, groupStartPairs })
   await audit('Jadval generatsiyasi boshlandi', `run #${run.id}`, req)
 
   res.status(202).json({
@@ -40,14 +50,12 @@ scheduleRouter.post('/generate', requireRole('Super Admin', 'Fakultet operatori'
 // qolishi mumkin va nega. "Jadval yaratish" dan oldin tekshirish uchun.
 scheduleRouter.post('/diagnose', requireRole('Super Admin', 'Fakultet operatori'), asyncHandler(async (req, res) => {
   const semester = Number(req.body?.semester) || 1
-  const afternoonGroups = Array.isArray(req.body?.afternoonGroups)
-    ? [...new Set(req.body.afternoonGroups.map(Number).filter((n) => Number.isInteger(n) && n > 0))]
-    : []
-  const ctx = await loadData(prisma, semester, { afternoonGroups })
+  const groupStartPairs = parseGroupStartPairs(req.body)
+  const ctx = await loadData(prisma, semester, { groupStartPairs })
   const diagnostics = buildDiagnostics(ctx)
   const totalEvents = ctx.events.length
   const problems = diagnostics.groupOverload.length + diagnostics.teacherOverload.length + diagnostics.blocked.length
-  res.json({ semester, afternoonGroups, totalEvents, ok: problems === 0, diagnostics })
+  res.json({ semester, groupStartPairs, totalEvents, ok: problems === 0, diagnostics })
 }))
 
 // GET /api/schedule/runs  — yaratilgan jadvallar ro'yxati.

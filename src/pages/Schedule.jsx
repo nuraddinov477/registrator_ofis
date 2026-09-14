@@ -17,6 +17,9 @@ const DAY_COLORS = [
   'bg-rose-500/15 border-rose-500/30 text-rose-600 dark:text-rose-300',
 ]
 const dt = (s) => (s ? new Date(s).toLocaleString('uz') : '')
+// Har bir juftlikning real soati — server/src/engine/timeslots.js'dagi PAIR_TIMES bilan
+// bir xil bo'lishi shart (1-indeksli: PAIR_TIMES[pair-1]).
+const PAIR_TIMES = ['8:00–9:20', '9:30–10:50', '11:30–12:50', '13:00–14:20', '14:30–15:50', '16:00–17:20']
 
 export default function Schedule() {
   const [runs, setRuns] = useState([])
@@ -42,9 +45,10 @@ export default function Schedule() {
   const [genOpen, setGenOpen] = useState(false)
   const [semester, setSemester] = useState('1')
   const [seconds, setSeconds] = useState(5)
-  // Obeddan keyingi (2-)smenaga biriktirilgan GURUH ID'lari (superadmin har bir guruhni
-  // alohida tanlaydi). null = hali ishga tushmagan (guruhlar yuklangach 1-kurs standart bo'ladi).
-  const [afternoonGroupIds, setAfternoonGroupIds] = useState(null)
+  // Har bir guruhning BOSHLANISH juftligi: { [groupId]: 1..6 } (real soati — PAIR_TIMES).
+  // Superadmin har bir guruhni ALOHIDA tanlaydi. null = hali ishga tushmagan (guruhlar
+  // yuklangach standart qiymatlar qo'yiladi: 1-kurs → 4 (13:00), qolganlari → 1 (8:00)).
+  const [groupStartPairs, setGroupStartPairs] = useState(null)
   const [groupFilter, setGroupFilter] = useState('') // guruh ro'yxatida qidirish
   const [diag, setDiag] = useState(null) // "Tekshirish" natijasi (jadval yaratmasdan)
   const [diagBusy, setDiagBusy] = useState(false)
@@ -61,7 +65,8 @@ export default function Schedule() {
   const canGenerate = role === ROLES.SUPER || role === ROLES.OPERATOR
 
   const run = runs.find((r) => r.id === runId) || null
-  const selectedAfternoon = afternoonGroupIds || new Set()
+  const startPairs = groupStartPairs || {}
+  const startPairOf = (gid) => startPairs[gid] ?? 1
   const courseNumbers = [...new Set(groups.map((g) => g.course))].sort((a, b) => a - b)
   const filteredGroups = groups
     .filter((g) => !groupFilter || g.name.toLowerCase().includes(groupFilter.toLowerCase()))
@@ -74,9 +79,9 @@ export default function Schedule() {
       const [rs, gs] = await Promise.all([api('/schedule/runs?all=1'), api('/groups')])
       setRuns(rs); setGroups(gs); setErr('')
       setGroupId((cur) => cur ?? gs[0]?.id ?? null)
-      // Standart: 1-kurs guruhlari 2-smenaga (faqat birinchi marta, foydalanuvchi
-      // keyin o'zgartirgan bo'lsa ustidan yozilmaydi)
-      setAfternoonGroupIds((cur) => cur ?? new Set(gs.filter((g) => g.course === 1).map((g) => g.id)))
+      // Standart: barcha guruh 1-juftlikdan (8:00) boshlanadi — kursga bog'liq maxsus qoida
+      // yo'q, superadmin kerak bo'lsa har birini (yoki butun kursni) o'zi o'zgartiradi
+      setGroupStartPairs((cur) => cur ?? Object.fromEntries(gs.map((g) => [g.id, 1])))
       const active = rs.filter((r) => !r.archived)
       const pick = selectId ?? (active.find((r) => r.status === 'done') || active[0] || rs[0])?.id ?? null
       setRunId((cur) => selectId ?? cur ?? pick)
@@ -127,7 +132,7 @@ export default function Schedule() {
     setDiagBusy(true); setErr('')
     try {
       const r = await api('/schedule/diagnose', {
-        method: 'POST', body: { semester: Number(semester), afternoonGroups: [...(afternoonGroupIds || [])] },
+        method: 'POST', body: { semester: Number(semester), groupStartPairs: startPairs },
       })
       setDiag(r)
     } catch (e) { setErr(e.message) } finally { setDiagBusy(false) }
@@ -145,22 +150,17 @@ export default function Schedule() {
     } catch (e) { setErr(e.message) } finally { setViolBusy(false) }
   }
 
-  // Bitta guruhning smenasini almashtiradi (2-smena ro'yxatiga qo'shadi/olib tashlaydi)
-  const toggleGroupShift = (gid) => {
-    setAfternoonGroupIds((prev) => {
-      const next = new Set(prev || [])
-      if (next.has(gid)) next.delete(gid); else next.add(gid)
-      return next
-    })
+  // Bitta guruhning boshlanish juftligini o'zgartiradi
+  const setGroupStart = (gid, pair) => {
+    setGroupStartPairs((prev) => ({ ...(prev || {}), [gid]: pair }))
   }
-  // Butun kursni bir zumda 2-smenaga qo'shish/olib tashlash (tezkor ko'p tanlov)
-  const toggleCourseShift = (course) => {
+  // Butun kursdagi barcha guruhlarni bir zumda shu juftlikка qo'yish (tezkor ko'p tanlov)
+  const setCourseStart = (course, pair) => {
     const courseGroups = groups.filter((g) => g.course === course)
-    setAfternoonGroupIds((prev) => {
-      const cur = new Set(prev || [])
-      const allOn = courseGroups.length > 0 && courseGroups.every((g) => cur.has(g.id))
-      for (const g of courseGroups) { if (allOn) cur.delete(g.id); else cur.add(g.id) }
-      return cur
+    setGroupStartPairs((prev) => {
+      const next = { ...(prev || {}) }
+      for (const g of courseGroups) next[g.id] = pair
+      return next
     })
   }
 
@@ -169,7 +169,7 @@ export default function Schedule() {
     setGenOpen(false); setBusy('Boshlanmoqda…'); setErr('')
     try {
       const { runId: newId } = await api('/schedule/generate', {
-        method: 'POST', body: { semester: Number(semester), maxMs: Number(seconds) * 1000, afternoonGroups: [...(afternoonGroupIds || [])] },
+        method: 'POST', body: { semester: Number(semester), maxMs: Number(seconds) * 1000, groupStartPairs: startPairs },
       })
       let final = null
       for (let i = 0; i < 150; i++) {
@@ -483,39 +483,45 @@ export default function Schedule() {
           <Field label="Optimallashtirish vaqti (soniya)">
             <input className="input" type="number" min="1" max="120" value={seconds} onChange={(e) => setSeconds(e.target.value)} />
           </Field>
-          <Field label="Obeddan keyingi (2-)smena — kurs bo'yicha tezkor tanlash">
-            <div className="flex flex-wrap gap-2">
+          <Field label="Boshlanish vaqti — kurs bo'yicha tezkor tanlash">
+            <div className="space-y-1.5">
               {courseNumbers.map((c) => {
                 const courseGroups = groups.filter((g) => g.course === c)
-                const on = courseGroups.length > 0 && courseGroups.every((g) => selectedAfternoon.has(g.id))
+                const uniform = new Set(courseGroups.map((g) => startPairOf(g.id)))
+                const value = uniform.size === 1 ? [...uniform][0] : ''
                 return (
-                  <button key={c} type="button" onClick={() => toggleCourseShift(c)}
-                    className={`h-9 min-w-[3rem] rounded-lg border px-2 text-sm transition ${on ? 'border-brand bg-brand/10 text-brand' : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}>
-                    {c}-kurs
-                  </button>
+                  <div key={c} className="flex items-center gap-2">
+                    <span className="w-16 text-sm text-slate-500 dark:text-slate-400">{c}-kurs</span>
+                    <select className="input" value={value}
+                      onChange={(e) => setCourseStart(c, Number(e.target.value))}>
+                      {value === '' && <option value="" disabled>— turlicha —</option>}
+                      {PAIR_TIMES.map((t, i) => (
+                        <option key={i} value={i + 1}>{i + 1}-juftlik ({t})</option>
+                      ))}
+                    </select>
+                  </div>
                 )
               })}
             </div>
             <p className="mt-1.5 text-xs text-slate-400">
-              2-smena — 4, 5, 6-juftlik (obeddan keyin); yuklama sig'masa 2 va 3-juftlikка ham to'kiladi (1-juftlik hech qachon). 1-smena — 1, 2, 3, 4-juftlik (ertalab). Kurs tugmasi shu kursdagi barcha guruhlarni birdan belgilaydi — pastda har bir guruhni alohida ham o'zgartirish mumkin.
+              Guruh tanlangan juftlikdan OLDINGI vaqtga hech qachon qo'yilmaydi (qat'iy). Kunlik dars soni 2 tadan kam, 4 tadan ko'p bo'lmaydi. Kurs qatori shu kursdagi barcha guruhlarni birdan belgilaydi — pastda har bir guruhni alohida ham o'zgartirish mumkin.
             </p>
           </Field>
-          <Field label={`Guruh bo'yicha alohida (${selectedAfternoon.size} ta 2-smenada)`}>
+          <Field label="Guruh bo'yicha alohida">
             <input className="input mb-2" placeholder="Guruh qidirish…" value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} />
             <div className="max-h-52 space-y-0.5 overflow-y-auto rounded-lg border border-slate-200 p-1.5 dark:border-slate-700">
               {filteredGroups.length === 0 && <p className="px-2 py-1 text-xs text-slate-400">Guruh topilmadi</p>}
-              {filteredGroups.map((g) => {
-                const on = selectedAfternoon.has(g.id)
-                return (
-                  <button key={g.id} type="button" onClick={() => toggleGroupShift(g.id)}
-                    className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800">
-                    <span>{g.name} <span className="text-xs text-slate-400">({g.course}-kurs)</span></span>
-                    <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${on ? 'bg-brand/15 text-brand' : 'bg-slate-500/10 text-slate-400'}`}>
-                      {on ? '2-smena' : '1-smena'}
-                    </span>
-                  </button>
-                )
-              })}
+              {filteredGroups.map((g) => (
+                <div key={g.id} className="flex items-center justify-between gap-2 rounded-md px-2 py-1 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">
+                  <span>{g.name} <span className="text-xs text-slate-400">({g.course}-kurs)</span></span>
+                  <select className="input h-8 w-auto py-0 text-xs" value={startPairOf(g.id)}
+                    onChange={(e) => setGroupStart(g.id, Number(e.target.value))}>
+                    {PAIR_TIMES.map((t, i) => (
+                      <option key={i} value={i + 1}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
             </div>
           </Field>
           <div className="flex justify-end gap-2 pt-2">

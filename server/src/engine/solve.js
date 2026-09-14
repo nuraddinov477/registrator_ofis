@@ -2,17 +2,17 @@ import { loadData } from './loadData.js'
 import { greedyConstruct } from './greedy.js'
 import { anneal } from './anneal.js'
 import { totalSoft } from './constraints.js'
-import { dayOf, pairOf, allowedSlots } from './timeslots.js'
+import { dayOf, pairOf, allowedSlots, PAIR_TIMES } from './timeslots.js'
 
 // Aniq, tushunarli tashxis — nima uchun jadval to'liq tuzilmadi (UI'da ko'rsatiladi).
 // Har bir muammoni ANIQ manzili bilan qaytaradi: qaysi guruh/o'qituvchi/dars va nega.
 export function buildDiagnostics(ctx) {
-  const gName = new Map(), gCourse = new Map(), gShift = new Map()
+  const gName = new Map(), gCourse = new Map(), gStart = new Map()
   for (const ev of ctx.events) {
     ev.groupIds.forEach((gid, k) => {
       if (!gName.has(gid)) gName.set(gid, ev.groupNames?.[k] || `#${gid}`)
       if (!gCourse.has(gid)) gCourse.set(gid, ev.course ?? 1)
-      if (!gShift.has(gid)) gShift.set(gid, !!ev.afternoonShift)
+      if (!gStart.has(gid)) gStart.set(gid, ev.startPair ?? 1)
     })
   }
 
@@ -20,13 +20,13 @@ export function buildDiagnostics(ctx) {
   const groupOverload = []
   for (const [gid, evs] of ctx.byGroup) {
     const course = gCourse.get(gid) ?? 1
-    const isAfternoon = gShift.get(gid) ?? false
-    const capacity = allowedSlots(isAfternoon).length // haftalik mavjud slot
+    const startPair = gStart.get(gid) ?? 1
+    const capacity = allowedSlots(startPair).length // haftalik mavjud slot
     const needed = evs.length
     if (needed > capacity) {
       groupOverload.push({
         group: gName.get(gid), course, needed, capacity,
-        shift: isAfternoon ? '2-smena (4,5,6-juftlik, sig\'masa 2,3-ga to\'kiladi)' : '1-smena (1,2,3,4-juftlik)',
+        shift: `${startPair}-juftlikdan (${PAIR_TIMES[startPair - 1]}) boshlanadi`,
       })
     }
   }
@@ -97,8 +97,8 @@ function verify(ctx) {
 
 // To'liq gibrid yechim: yuklash → greedy → simulated annealing → tekshirish
 export async function solve(prisma, options = {}) {
-  const { semester = 1, maxMs = 5000, afternoonGroups = [], ...annealOpts } = options
-  const ctx = await loadData(prisma, semester, { afternoonGroups })
+  const { semester = 1, maxMs = 5000, groupStartPairs = {}, ...annealOpts } = options
+  const ctx = await loadData(prisma, semester, { groupStartPairs })
 
   if (ctx.events.length === 0) {
     return { ctx, semester, empty: true, report: { hard: 0, soft: 0, feasible: true, unplaced: 0, breakdown: { group: 0, teacher: 0, room: 0 }, infeasibleEvents: [] }, diagnostics: { groupOverload: [], teacherOverload: [], blocked: [], unresolved: [] }, entries: [] }

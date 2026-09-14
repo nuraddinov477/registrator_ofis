@@ -7,30 +7,30 @@ export const SLOTS = DAYS * PAIRS
 
 export const DAY_NAMES = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma']
 
+// Har bir juftlikning real soat oralig'i (1-indeksli: PAIR_TIMES[pair-1]).
+// Frontenddagi src/pages/Schedule.jsx'dagi PAIR_TIMES bilan bir xil bo'lishi shart.
+export const PAIR_TIMES = ['8:00–9:20', '9:30–10:50', '11:30–12:50', '13:00–14:20', '14:30–15:50', '16:00–17:20']
+
 export const slotIndex = (day, pair) => day * PAIRS + (pair - 1)
 export const dayOf = (slot) => Math.floor(slot / PAIRS)
 export const pairOf = (slot) => (slot % PAIRS) + 1
 
-// Smenalar:
-//   1-smena (ertalabki)      — 1,2,3,4-juftlik
-//   2-smena (obeddan keyingi) — asosan 4,5,6-juftlik; agar o'qituvchi/guruh yuklamasi
-//     15 juftlikdan oshib, sig'masa — 2 va 3-juftlikка ham "to'kiladi" (lekin 1-juftlik
-//     hech qachon 2-smenaga qo'yilmaydi). SOFT jarima (afternoonEarly) 4,5,6'ni afzal ko'radi.
-export const MORNING_PAIRS = [1, 2, 3, 4]
-export const AFTERNOON_PREFERRED = [4, 5, 6]
-export const AFTERNOON_PAIRS = [4, 5, 6, 2, 3] // ustuvorlar oldinda — greedy shu tartibda to'ldiradi
-
-// Smena guruh darajasida tanlanadi (superadmin har bir guruhni alohida 1- yoki
-// 2-smenaga biriktiradi — loadData.js'da afternoonGroups ro'yxati orqali).
-export function pairsForShift(isAfternoon) {
-  return isAfternoon ? AFTERNOON_PAIRS : MORNING_PAIRS
+// Har bir GURUH o'z BOSHLANISH juftligini (1..6, ya'ni real soatini) tanlaydi —
+// superadmin loadData.js'ga uzatiladigan groupStartPairs orqali belgilaydi (standart: 1).
+// QAT'IY: guruh tanlangan juftlikdan OLDINGI vaqtga hech qachon qo'yilmaydi (masalan
+// 12:00'ni tanlagan guruh 8:00/9:30'ga tushmaydi) — shu sabab "to'kilish" yo'q, faqat
+// [startPair..6] oralig'i ishlatiladi. Kunlik 2-4 juftlik qoidasi (groupDayMin/Max,
+// constraints.js) bu bilan birga ishlaydi.
+export function pairsForStart(startPair) {
+  const pairs = []
+  for (let p = startPair; p <= PAIRS; p++) pairs.push(p)
+  return pairs
 }
 
-// Shu smenaga ruxsat etilgan slotlar. Juftliklar ustuvorlik tartibida (greedy shu
-// tartibda birinchi bo'sh joyni tanlaydi): 2-smena uchun avval 4,5,6, keyin 2,3.
-export function allowedSlots(isAfternoon) {
+// Guruhning boshlanish juftligiga ruxsat etilgan slotlar.
+export function allowedSlots(startPair) {
   const slots = []
-  for (const pair of pairsForShift(isAfternoon)) {
+  for (const pair of pairsForStart(startPair)) {
     for (let day = 0; day < DAYS; day++) {
       slots.push(slotIndex(day, pair))
     }
