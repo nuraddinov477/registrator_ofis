@@ -93,11 +93,11 @@ export function anneal(ctx, occ, opts = {}) {
     const oldHard = occ.hard
     const oldSlot = ev.slot, oldRoom = ev.room
 
-    // qo'shni yechim: yangi slot + xona. ~75% holatda "jozibali" (oyna to'ldiruvchi/
+    // qo'shni yechim: yangi slot + xona. ~90% holatda "jozibali" (oyna to'ldiruvchi/
     // blok davom ettiruvchi — avval guruh, keyin o'qituvchi) slotlar orasidan, aks
     // holda to'liq tasodifiy (lokal optimumga qotib qolmaslik uchun ozgina saqlanadi).
     occ.remove(ev)
-    const smart = Math.random() < 0.75 ? attractiveSlots(ev, ctx) : null
+    const smart = Math.random() < 0.9 ? attractiveSlots(ev, ctx) : null
     const slotPool = smart || ev.slots
     ev.slot = slotPool[randInt(slotPool.length)]
     ev.room = ev.rooms[randInt(ev.rooms.length)]

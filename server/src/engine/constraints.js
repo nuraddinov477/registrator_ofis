@@ -6,8 +6,14 @@ export const TYPE_RANK = { "Maʼruza": 0, Seminar: 1, Amaliy: 2 }
 
 // Yumshoq cheklash vaznlari (sozlanadigan). Qattiq cheklash Occupancy.hard orqali.
 export const WEIGHTS = {
-  teacherGap: 7, // o'qituvchi "derazasi" — bo'sh keyin band, keyin yana bo'sh bo'lib qolmasin
-  groupGap: 10, // guruh (talaba) "derazasi" — kun ichidagi bo'sh oraliq VA kun boshidan birinchi darsgacha bo'sh vaqt (masalan kuni 1-juftlik bo'sh-u dars 3-juftlikdan boshlansa). Talabalar uchun ustuvorlik teacherGap'dan YUQORI — avval guruh, keyin o'qituvchi derazasi kamaytiriladi
+  // teacherGap/groupGap: KVADRATIK — cost = (haftalik jami oyna juftlik)^2 * vazn (har
+  // ENTITY uchun bitta marta, kun bo'yicha emas). Chiziqli bo'lganda "4 oyna 1 guruhda"
+  // bilan "1 oyna 4 xil guruhda" bir xil jarima olardi — kvadratik esa TO'PLANIB QOLGAN
+  // oynani ancha qattiqroq jazolaydi, shu bilan (butunlay yo'qotib bo'lmasa) oynalarni
+  // KO'P GURUH/O'QITUVCHI orasida TENG taqsimlashga majburlaydi. groupGap > teacherGap —
+  // avval talaba, keyin o'qituvchi oynasi kamaytiriladi/taqsimlanadi.
+  teacherGap: 2,
+  groupGap: 3,
   consecutive: 3, // 4 tadan ortiq ketma-ket dars (har ortig'i)
   subjectSpread: 100, // bir fan bir kunda ikkinchi marta kelsa (ketma-ket bo'lsa ham, orada tanaffus bo'lsa ham) — boshqa kunga ko'chirilishi kerak. Vazn ATAYIN baland: teacherGap/lonePair/groupDayMin kabi "kunlarni siqish" tendensiyasidan HAR DOIM ustun turishi kerak (bir fan kuni muhimroq)
   subjectConsecutiveDays: 18, // bir fan ketma-ket kunlarga tushsa (masalan Dush+Sesh) — 1 kun oralik yetarli, ortiqcha tanaffus shart emas
@@ -78,10 +84,11 @@ export function groupCost(groupEvents, W = WEIGHTS) {
   }
 
   const counts = []
+  let weeklyGap = 0
   for (const day of perDay) {
     const pairs = day.map((e) => pairOf(e.slot))
     counts.push(day.length)
-    cost += gapsInDay(pairs, dayStart) * W.groupGap
+    weeklyGap += gapsInDay(pairs, dayStart)
     cost += consecutivePenalty(pairs) * W.consecutive
     // Kunlik darslar soni: 4 tadan oshmasin, band kunda 1 tadan iborat bo'lmasin (2 tadan kam)
     if (day.length > 4) cost += (day.length - 4) * W.groupDayMax
@@ -110,6 +117,9 @@ export function groupCost(groupEvents, W = WEIGHTS) {
     }
   }
 
+  // Haftalik jami oyna — KVADRATIK (yuqoridagi izohga qarang): boshqa guruhlarga
+  // nisbatan to'planib qolgan oynani qattiqroq jazolab, taqsimlanishga majburlaydi
+  cost += weeklyGap * weeklyGap * W.groupGap
   // kunlar bo'yicha muvozanat (kvadratlar yig'indisi minimal bo'lsa teng taqsimlanadi)
   cost += counts.reduce((s, c) => s + c * c, 0) * W.groupBalance * 0.5
   // guruh uchun xona barqarorligi
@@ -160,13 +170,17 @@ export function teacherCost(teacherEvents, W = WEIGHTS) {
     perDay[dayOf(e.slot)].push(e)
   }
   let cost = 0
+  let weeklyGap = 0
   for (const day of perDay) {
     if (day.length === 0) continue
     const pairs = day.map((e) => pairOf(e.slot))
-    cost += gapsInDay(pairs) * W.teacherGap // derazalar
+    weeklyGap += gapsInDay(pairs) // derazalar
     cost += W.teacherDay // har faol kun — kunlar soni kamaysin
     if (day.length === 1) cost += W.lonePair // yolg'iz juftlik kuni — eng yomoni
   }
+  // Haftalik jami oyna — KVADRATIK (groupCost'dagi kabi): boshqa o'qituvchilarga
+  // nisbatan to'planib qolgan oynani qattiqroq jazolab, taqsimlanishga majburlaydi
+  cost += weeklyGap * weeklyGap * W.teacherGap
   return cost
 }
 
