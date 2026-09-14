@@ -10,7 +10,11 @@ export const LARGE_ROOM_CAPACITY = 60
 // Event = jadvalga joylanadigan eng kichik birlik. Guruh/o'qituvchi/fan QAT'IY,
 // faqat slot va xona o'zgaradi (qidiruv fazosi shu).
 export async function loadData(prisma, semester = 1, opts = {}) {
-  const { afternoonCourses = [1] } = opts
+  // afternoonGroups — 2-smenaga (obeddan keyin) biriktirilgan guruh ID'lari ro'yxati.
+  // Superadmin har bir guruhni ALOHIDA tanlaydi (frontend'da kurs chipslari — bir nechta
+  // guruhni birdan belgilash uchun qulaylik, lekin yakuniy ro'yxat guruh darajasida keladi).
+  const { afternoonGroups = [] } = opts
+  const afternoonSet = new Set(afternoonGroups)
   const [workloads, rooms, teacherConstraints] = await Promise.all([
     prisma.workload.findMany({
       where: { semester, archived: false }, // arxivlangan yuklama jadval tuzishda hisobga olinmaydi
@@ -129,7 +133,7 @@ export async function loadData(prisma, semester = 1, opts = {}) {
         teacherName: w.teacher?.fullName,
         subjectName: w.subject?.name,
         course: wgroups[0]?.course ?? 1,
-        afternoonShift: afternoonCourses.includes(wgroups[0]?.course ?? 1), // 2-smena — 4,5,6 afzal (constraints.js)
+        afternoonShift: afternoonSet.has(wgroups[0]?.id), // 2-smena — 4,5,6 afzal (constraints.js)
         groupSize: wgroups.reduce((s, g) => s + (g.size ?? 0), 0), // barcha guruh talabalari yig'indisi
         specialtyIds: [...new Set(wgroups.map((g) => g.specialtyId).filter((v) => v != null))],
         facultyIds: [...new Set(wgroups.map((g) => g.facultyId).filter((v) => v != null))],
@@ -138,7 +142,7 @@ export async function loadData(prisma, semester = 1, opts = {}) {
         slot: -1,
         room: -1,
       }
-      ev.slots = applyTeacherConstraint(allowedSlots(ev.course, afternoonCourses), ev.teacherId) // ruxsat etilgan slotlar
+      ev.slots = applyTeacherConstraint(allowedSlots(ev.afternoonShift), ev.teacherId) // ruxsat etilgan slotlar
       // Nomzod xonalar: biriktirilgan xona(lar) va sig'imi eng mos kelganlari oldinda —
       // greedy shulardan birinchi bo'sh topganini tanlaydi (assignedRoom/roomFit soft cheklashlariga mos)
       const candidateRooms = roomMeta.filter((r) =>
@@ -192,5 +196,5 @@ export async function loadData(prisma, semester = 1, opts = {}) {
     }
   }
 
-  return { events, byGroup, byTeacher, rooms: roomMeta, infeasible, semester, afternoonCourses }
+  return { events, byGroup, byTeacher, rooms: roomMeta, infeasible, semester, afternoonGroups }
 }

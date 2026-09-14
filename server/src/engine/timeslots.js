@@ -20,17 +20,17 @@ export const MORNING_PAIRS = [1, 2, 3, 4]
 export const AFTERNOON_PREFERRED = [4, 5, 6]
 export const AFTERNOON_PAIRS = [4, 5, 6, 2, 3] // ustuvorlar oldinda — greedy shu tartibda to'ldiradi
 
-// Kurs qaysi smenada: afternoonCourses ro'yxatidagi kurslar 2-smenada, qolganlari 1-smenada.
-// Standart: 1-kurs → 2-smena.
-export function pairsForCourse(course, afternoonCourses = [1]) {
-  return afternoonCourses.includes(course) ? AFTERNOON_PAIRS : MORNING_PAIRS
+// Smena guruh darajasida tanlanadi (superadmin har bir guruhni alohida 1- yoki
+// 2-smenaga biriktiradi — loadData.js'da afternoonGroups ro'yxati orqali).
+export function pairsForShift(isAfternoon) {
+  return isAfternoon ? AFTERNOON_PAIRS : MORNING_PAIRS
 }
 
-// Kursga ruxsat etilgan slotlar. Juftliklar ustuvorlik tartibida (greedy shu tartibda
-// birinchi bo'sh joyni tanlaydi): 2-smena uchun avval 4,5,6, keyin 2,3.
-export function allowedSlots(course, afternoonCourses = [1]) {
+// Shu smenaga ruxsat etilgan slotlar. Juftliklar ustuvorlik tartibida (greedy shu
+// tartibda birinchi bo'sh joyni tanlaydi): 2-smena uchun avval 4,5,6, keyin 2,3.
+export function allowedSlots(isAfternoon) {
   const slots = []
-  for (const pair of pairsForCourse(course, afternoonCourses)) {
+  for (const pair of pairsForShift(isAfternoon)) {
     for (let day = 0; day < DAYS; day++) {
       slots.push(slotIndex(day, pair))
     }
