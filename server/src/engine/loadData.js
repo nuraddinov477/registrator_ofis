@@ -3,6 +3,10 @@ import { allowedSlots, dayOf, pairOf, PAIRS } from './timeslots.js'
 // Katta auditoriya chegarasi: bundan katta sig'imli xonalar faqat shuncha (yoki undan
 // ortiq) talabali guruh/potokka ajratiladi — kichik guruhlar band qilmaydi.
 export const LARGE_ROOM_CAPACITY = 60
+// Asosiy (fakultetsiz) binodagi katta zallar ("Katta zal 1-7" va h.k.) uchun QAT'IY
+// diapazon — Ma'ruzada faqat shu oraliqdagi potok o'lchami ruxsat etiladi.
+export const MAIN_HALL_MIN = 70
+export const MAIN_HALL_MAX = 100
 
 // DB'dan ma'lumotni o'qib, optimallashtirish konteksti (events + nomzod xonalar) tuzadi.
 //
@@ -86,17 +90,32 @@ export async function loadData(prisma, semester = 1, opts = {}) {
   // Event uchun xona mosligi: sig'im yetarli VA kirish ruxsati bor
   const roomAllowed = (room, ev) => {
     if (room.capacity < ev.groupSize) return false // qattiq cheklash 5
-    // Katta auditoriya (60+ o'rinli) — FAQAT MA'RUZA turidagi darsda 60 dan ortiq
-    // talabali potokka ajratiladi (qattiq cheklash 8). Amaliy/Seminar (kichik guruh)
-    // darslarga qattiq taqiqlanmaydi — aks holda kichik xonasi umuman yo'q fakultetlar
-    // (masalan faqat "Katta zal"ga ega bino) hech qanday dars o'tkaza olmay qoladi.
-    // Bunday holatda ham ortiqcha sig'imli xona roomFit yumshoq jarimasi bilan kamroq
-    // afzal qilinadi, lekin oxirgi chora sifatida ishlatilishi mumkin.
-    if (room.capacity > LARGE_ROOM_CAPACITY && ev.groupSize <= LARGE_ROOM_CAPACITY && ev.type === 'Maʼruza') return false
+    if (room.capacity > LARGE_ROOM_CAPACITY) {
+      if (room.facultyId == null) {
+        // Asosiy (fakultetsiz) binodagi katta zal ("Katta zal 1-7" va h.k.):
+        // 1) Fanga maxsus xona biriktirilgan bo'lsa (masalan Jismoniy tarbiya — sport
+        //    zali) — bu fan katta zaldan TURI/HAJMIDAN QAT'I NAZAR foydalanmaydi,
+        //    o'ziga tegishli xonaga tortiladi (subjectRoomMap).
+        if (subjectRoomMap.has(ev.subjectId)) return false
+        // 2) Ma'ruzada QAT'IY: faqat 70-100 talabali potok (qattiq cheklash 8)
+        if (ev.type === 'Maʼruza' && (ev.groupSize < MAIN_HALL_MIN || ev.groupSize > MAIN_HALL_MAX)) return false
+      } else if (ev.groupSize <= LARGE_ROOM_CAPACITY && ev.type === 'Maʼruza') {
+        // Fakultetga tegishli katta xona (kamdan-kam) — oddiy 60+ qoidasi. Amaliy/
+        // Seminar (kichik guruh) darslarga qattiq taqiqlanmaydi — aks holda kichik
+        // xonasi umuman yo'q fakultetlar hech qanday dars o'tkaza olmay qoladi.
+        // Bunday holatda ham ortiqcha sig'im roomFit yumshoq jarimasi bilan kamroq
+        // afzal qilinadi, lekin oxirgi chora sifatida ishlatilishi mumkin.
+        return false
+      }
+    }
     // Fakultet bino egaligi — "asosiy" bino (facultyId=null) hammaga ochiq, boshqa
     // fakultetning binosiga aralashmaydi (qattiq cheklash — bino qaysi fakultetniki
-    // bo'lsa, faqat o'sha fakultet guruhlari shu bino xonalaridan foydalanadi)
-    if (room.facultyId != null && !ev.facultyIds.includes(room.facultyId)) return false
+    // bo'lsa, faqat o'sha fakultet guruhlari shu bino xonalaridan foydalanadi).
+    // ISTISNO: xonaga shu FANGA maxsus ruxsat berilgan bo'lsa (masalan jismoniy
+    // tarbiya — sport zali, fizik joylashuvi biror fakultet binosida bo'lsa ham),
+    // bino-fakultet egaligi chetlab o'tiladi — bunday xona ATAYLAB butun universitet
+    // uchun umumiy fan xizmatini ko'rsatadi, qaysi binoda joylashganidan qat'i nazar.
+    if (room.facultyId != null && !ev.facultyIds.includes(room.facultyId) && !room.subjects.has(ev.subjectId)) return false
     if (room.type === 'umumiy') return true // hamma foydalanishi mumkin
     // maxsus: o'qituvchi / guruh(lar) / yo'nalish(lar) / FAN ruxsati (qattiq cheklash 6,7) —
     // potokda tanlangan guruhlardan BIRIGA (yoki darsning fani) ruxsat bo'lsa yetarli
@@ -190,9 +209,11 @@ export async function loadData(prisma, semester = 1, opts = {}) {
           ev.reason = `guruh ${ev.groupSize} kishilik — sig'imi yetarli xona yo'q (eng katta xona ${maxCap} o'rin)`
         } else if (fitByFaculty.length === 0) {
           ev.reason = "fakultet binosida (yoki asosiy binoda) sig'imi mos xona yo'q — boshqa fakultet binosidan foydalanib bo'lmaydi"
-        } else if (ev.type === 'Maʼruza' && ev.groupSize <= LARGE_ROOM_CAPACITY
-          && fitByFaculty.every((r) => r.capacity > LARGE_ROOM_CAPACITY)) {
-          ev.reason = `ma'ruza, guruh ${ev.groupSize} kishilik — mos sig'imli xonalarning barchasi katta auditoriya (${LARGE_ROOM_CAPACITY}+ o'rin), ular faqat ${LARGE_ROOM_CAPACITY} dan ortiq talabali ma'ruzalarga ajratiladi`
+        } else if (subjectRoomMap.has(ev.subjectId)
+          && fitByFaculty.every((r) => r.capacity > LARGE_ROOM_CAPACITY && r.facultyId == null)) {
+          ev.reason = "bu fanga maxsus xona biriktirilgan (masalan sport zali) — asosiy binodagi katta zaldan foydalanmaydi, lekin o'ziga tegishli xona yetarli emas yoki band"
+        } else if (ev.type === 'Maʼruza' && fitByFaculty.every((r) => r.capacity > LARGE_ROOM_CAPACITY)) {
+          ev.reason = `ma'ruza, guruh ${ev.groupSize} kishilik — mos sig'imli xonalarning barchasi katta zal: asosiy binoda faqat ${MAIN_HALL_MIN}-${MAIN_HALL_MAX} talabali, fakultet binosida ${LARGE_ROOM_CAPACITY}+ talabali potokka ajratiladi`
         } else {
           ev.reason = "faqat maxsus xonalar mos keladi, lekin bu guruh/o'qituvchi/yo'nalish/fanga kirish ruxsati berilmagan"
         }

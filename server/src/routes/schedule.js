@@ -4,7 +4,7 @@ import { prisma, audit } from '../db.js'
 import { requireRole } from '../auth/middleware.js'
 import { restrictionBlocks } from '../auth/access.js'
 import { startGenerateJob } from '../engine/jobRunner.js'
-import { loadData, LARGE_ROOM_CAPACITY } from '../engine/loadData.js'
+import { loadData, LARGE_ROOM_CAPACITY, MAIN_HALL_MIN, MAIN_HALL_MAX } from '../engine/loadData.js'
 import { buildDiagnostics } from '../engine/solve.js'
 import { DAY_NAMES, DAYS, PAIRS } from '../engine/timeslots.js'
 
@@ -323,13 +323,30 @@ async function roomEligibility({ roomId, groupId, teacherId, type, subjectId }) 
   if (room.capacity < (group.size ?? 0)) {
     return `Xona sig'imi yetarli emas: "${room.name}" ${room.capacity} o'rinli, guruhda ${group.size} talaba`
   }
-  // Katta auditoriya (60+) — FAQAT ma'ruzada 60+ talabaga qat'iy; amaliy/seminarda
-  // taqiqlanmaydi (generatsiyadagi kabi — loadData.js'ga qarang)
-  if (type === 'Maʼruza' && room.capacity > LARGE_ROOM_CAPACITY && (group.size ?? 0) <= LARGE_ROOM_CAPACITY) {
-    return `"${room.name}" — katta auditoriya (${room.capacity} o'rin), ma'ruzada faqat ${LARGE_ROOM_CAPACITY} dan ortiq talabali guruh/potok uchun ajratilgan (bu guruhda ${group.size} talaba)`
+  // Katta auditoriya (60+) — generatsiyadagi kabi (loadData.js'ga qarang):
+  // asosiy (fakultetsiz) binoda — Ma'ruzada faqat 70-100 talaba, VA fanga boshqa
+  // joyda maxsus xona biriktirilgan bo'lsa (masalan sport zali) UMUMAN taqiqlanadi;
+  // fakultet binosida — oddiy 60+ qoidasi (faqat Ma'ruzada).
+  if (room.capacity > LARGE_ROOM_CAPACITY) {
+    const bFacId = room.building?.facultyId ?? null
+    if (bFacId == null) {
+      if (subjectId != null) {
+        const dedicated = await prisma.roomPermission.count({ where: { subjectId, room: { type: 'maxsus' } } })
+        if (dedicated > 0) return `"${room.name}" — asosiy binodagi katta zal, bu fanga boshqa joyda maxsus xona biriktirilgan (masalan sport zali) — bu yerdan foydalanmaydi`
+      }
+      const size = group.size ?? 0
+      if (type === 'Maʼruza' && (size < MAIN_HALL_MIN || size > MAIN_HALL_MAX)) {
+        return `"${room.name}" — asosiy binodagi katta zal (${room.capacity} o'rin), ma'ruzada faqat ${MAIN_HALL_MIN}-${MAIN_HALL_MAX} talabali guruh/potok uchun ajratilgan (bu guruhda ${size} talaba)`
+      }
+    } else if (type === 'Maʼruza' && (group.size ?? 0) <= LARGE_ROOM_CAPACITY) {
+      return `"${room.name}" — katta auditoriya (${room.capacity} o'rin), ma'ruzada faqat ${LARGE_ROOM_CAPACITY} dan ortiq talabali guruh/potok uchun ajratilgan (bu guruhda ${group.size} talaba)`
+    }
   }
   const bFac = room.building?.facultyId ?? null
-  if (bFac != null && group.facultyId != null && bFac !== group.facultyId) {
+  // ISTISNO: xonaga shu FANGA maxsus ruxsat berilgan bo'lsa (masalan jismoniy tarbiya —
+  // sport zali) — bino-fakultet egaligi chetlab o'tiladi (loadData.js bilan bir xil)
+  const subjectExempt = subjectId != null && room.permissions.some((p) => p.subjectId === subjectId)
+  if (bFac != null && group.facultyId != null && bFac !== group.facultyId && !subjectExempt) {
     return `"${room.name}" boshqa fakultet binosida — bu guruh u yerdan foydalana olmaydi`
   }
   if (room.type === 'maxsus') {
