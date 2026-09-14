@@ -313,7 +313,7 @@ const conflictMsg = (reasons) => `Bu mumkin emas: shu vaqtda ${reasons.join(', '
 // Qo'lda tahrirlashda ham xona qoidalari qat'iy tekshiriladi (generatsiyadagi kabi):
 // sig'im, fakultet binosi egaligi, MAXSUS xona ruxsati (faqat belgilangan guruh/o'qituvchi/yo'nalish).
 // Mos bo'lsa null, aks holda aniq sabab matni qaytadi.
-async function roomEligibility({ roomId, groupId, teacherId, type }) {
+async function roomEligibility({ roomId, groupId, teacherId, type, subjectId }) {
   const [room, group] = await Promise.all([
     prisma.room.findUnique({ where: { id: roomId }, include: { permissions: true, building: true } }),
     prisma.group.findUnique({ where: { id: groupId } }),
@@ -334,8 +334,10 @@ async function roomEligibility({ roomId, groupId, teacherId, type }) {
   }
   if (room.type === 'maxsus') {
     const ok = room.permissions.some((p) =>
-      p.teacherId === teacherId || p.groupId === groupId || (group.specialtyId != null && p.specialtyId === group.specialtyId))
-    if (!ok) return `"${room.name}" — maxsus xona, bu guruh/o'qituvchi/yo'nalishga kirish ruxsati berilmagan`
+      p.teacherId === teacherId || p.groupId === groupId
+      || (group.specialtyId != null && p.specialtyId === group.specialtyId)
+      || (subjectId != null && p.subjectId === subjectId))
+    if (!ok) return `"${room.name}" — maxsus xona, bu guruh/o'qituvchi/yo'nalish/fanga kirish ruxsati berilmagan`
   }
   // QAT'IY biriktirish: bu guruh faqat exclusive xonalarida dars o'tishi mumkin
   const exPerms = await prisma.roomPermission.findMany({ where: { groupId, exclusive: true }, include: { room: true } })
@@ -357,7 +359,7 @@ scheduleRouter.post('/runs/:id/entries', requireRole('Super Admin'), asyncHandle
   if (!isValidSlot(day, pair)) return res.status(400).json({ error: "Kun/juftlik noto'g'ri" })
   const reasons = await slotConflicts({ runId, day, pair, groupId, teacherId, roomId })
   if (reasons.length) return res.status(409).json({ error: conflictMsg(reasons) })
-  const roomErr = await roomEligibility({ roomId, groupId, teacherId, type: type || 'Amaliy' })
+  const roomErr = await roomEligibility({ roomId, groupId, teacherId, type: type || 'Amaliy', subjectId })
   if (roomErr) return res.status(409).json({ error: roomErr })
   const entry = await prisma.scheduleEntry.create({ data: { runId, groupId, subjectId, teacherId, roomId, day, pair, type: type || 'Amaliy' } })
   await audit("Jadvalga dars qo'shildi", `run #${runId} · ${DAY_NAMES[day]} ${pair}-juft`, req)
@@ -382,7 +384,7 @@ scheduleRouter.put('/runs/:id/entries/:entryId', requireRole('Super Admin'), asy
   if (!isValidSlot(merged.day, merged.pair)) return res.status(400).json({ error: "Kun/juftlik noto'g'ri" })
   const reasons = await slotConflicts({ runId, ...merged, excludeId: entryId })
   if (reasons.length) return res.status(409).json({ error: conflictMsg(reasons) })
-  const roomErr = await roomEligibility({ roomId: merged.roomId, groupId: merged.groupId, teacherId: merged.teacherId, type: merged.type })
+  const roomErr = await roomEligibility({ roomId: merged.roomId, groupId: merged.groupId, teacherId: merged.teacherId, type: merged.type, subjectId: merged.subjectId })
   if (roomErr) return res.status(409).json({ error: roomErr })
   const entry = await prisma.scheduleEntry.update({ where: { id: entryId }, data: merged })
   await audit('Jadval darsi tahrirlandi', `run #${runId} · ${DAY_NAMES[merged.day]} ${merged.pair}-juft`, req)

@@ -94,6 +94,7 @@ model Subject {
   difficulty Int        @default(3)
   workloads  Workload[]
   teachingRequests TeachingRequest[]
+  roomPermissions  RoomPermission[]
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 }
@@ -157,6 +158,12 @@ model RoomPermission {
   groupId     Int?
   specialty   Specialty? @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
   specialtyId Int?
+  // Fan bo'yicha ruxsat (masalan "Jismoniy tarbiya" → sport zali): shu FANNING darslari
+  // (qaysi guruh/o'qituvchi bo'lishidan qat'i nazar) bu xonaga kira oladi. Fakultetlar
+  // aro umumiy fanlar (jismoniy tarbiya kabi) uchun ayniqsa foydali — guruh/o'qituvchi/
+  // yo'nalish sanab chiqishga hojat qoldirmaydi.
+  subject     Subject?   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subjectId   Int?
   // exclusive=true (faqat guruh ruxsatida ma'noli): bu guruh FAQAT shu xona(lar)da dars
   // o'tadi — jadval tuzishda boshqa xona nomzod bo'lmaydi (qat'iy). exclusive=false —
   // shunchaki ruxsat + yumshoq ustuvorlik (assignedRoom).

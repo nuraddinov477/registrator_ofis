@@ -30,13 +30,14 @@ export async function loadData(prisma, semester = 1, opts = {}) {
   // Har bir xona uchun ruxsat to'plamlari (maxsus xonalar uchun) + qaysi fakultetning
   // binosida joylashgani (bino.facultyId=null → "asosiy/umumiy" bino, hamma foydalanadi)
   const roomMeta = rooms.map((r) => {
-    const teachers = new Set(), groups = new Set(), specialties = new Set(), exclusiveGroups = new Set()
+    const teachers = new Set(), groups = new Set(), specialties = new Set(), exclusiveGroups = new Set(), subjects = new Set()
     for (const p of r.permissions) {
       if (p.teacherId != null) teachers.add(p.teacherId)
       if (p.groupId != null) { groups.add(p.groupId); if (p.exclusive) exclusiveGroups.add(p.groupId) }
       if (p.specialtyId != null) specialties.add(p.specialtyId)
+      if (p.subjectId != null) subjects.add(p.subjectId)
     }
-    return { id: r.id, name: r.name, capacity: r.capacity, type: r.type, facultyId: r.building?.facultyId ?? null, teachers, groups, specialties, exclusiveGroups }
+    return { id: r.id, name: r.name, capacity: r.capacity, type: r.type, facultyId: r.building?.facultyId ?? null, teachers, groups, specialties, exclusiveGroups, subjects }
   })
 
   // Guruhga MAXSUS biriktirilgan xona(lar) — RoomPermission'da shu guruhga aniq ruxsat
@@ -50,6 +51,10 @@ export async function loadData(prisma, semester = 1, opts = {}) {
   const groupRoomMap = new Map() // groupId -> Set(roomId)  (barcha ruxsatlar)
   const groupOnlyRoomMap = new Map() // groupId -> Set(roomId)  (faqat exclusive)
   const teacherRoomMap = new Map() // teacherId -> Set(roomId)
+  // Fanga MAXSUS biriktirilgan xona(lar) — masalan "Jismoniy tarbiya" → sport zali.
+  // Qaysi guruh/o'qituvchi bo'lishidan qat'i nazar, shu FAN darsi bo'lsa ustuvor (va
+  // maxsus xona bo'lsa — kirish ruxsati ham shu orqali beriladi, roomAllowed'ga qarang).
+  const subjectRoomMap = new Map() // subjectId -> Set(roomId)
   for (const r of roomMeta) {
     for (const gid of r.groups) {
       if (!groupRoomMap.has(gid)) groupRoomMap.set(gid, new Set())
@@ -62,6 +67,10 @@ export async function loadData(prisma, semester = 1, opts = {}) {
     for (const tid of r.teachers) {
       if (!teacherRoomMap.has(tid)) teacherRoomMap.set(tid, new Set())
       teacherRoomMap.get(tid).add(r.id)
+    }
+    for (const sid of r.subjects) {
+      if (!subjectRoomMap.has(sid)) subjectRoomMap.set(sid, new Set())
+      subjectRoomMap.get(sid).add(r.id)
     }
   }
 
@@ -89,11 +98,12 @@ export async function loadData(prisma, semester = 1, opts = {}) {
     // bo'lsa, faqat o'sha fakultet guruhlari shu bino xonalaridan foydalanadi)
     if (room.facultyId != null && !ev.facultyIds.includes(room.facultyId)) return false
     if (room.type === 'umumiy') return true // hamma foydalanishi mumkin
-    // maxsus: o'qituvchi / guruh(lar) / yo'nalish(lar) ruxsati (qattiq cheklash 6,7) —
-    // potokda tanlangan guruhlardan BIRIGA ruxsat bo'lsa yetarli
+    // maxsus: o'qituvchi / guruh(lar) / yo'nalish(lar) / FAN ruxsati (qattiq cheklash 6,7) —
+    // potokda tanlangan guruhlardan BIRIGA (yoki darsning fani) ruxsat bo'lsa yetarli
     return room.teachers.has(ev.teacherId)
       || ev.groupIds.some((gid) => room.groups.has(gid))
       || ev.specialtyIds.some((sid) => room.specialties.has(sid))
+      || room.subjects.has(ev.subjectId)
   }
 
   // O'qituvchi istisnolariga mos ravishda ruxsat etilgan slotlarni toraytiradi
@@ -116,11 +126,13 @@ export async function loadData(prisma, semester = 1, opts = {}) {
     // hammasi BIRGA bitta darsda ishtirok etadi (fan soati guruhlar soniga ko'paytirilmaydi)
     const wgroups = w.groups.map((x) => x.group).filter(Boolean)
     const groupIds = w.groups.map((x) => x.groupId)
-    // Shu potokdagi guruh(lar)ga VA/YOKI shu o'qituvchiga maxsus biriktirilgan xona(lar) —
-    // bo'lsa, jadval tuzishda ustuvor (ikkalasi ham tekshiriladi, natijalar birlashtiriladi)
+    // Shu potokdagi guruh(lar)ga VA/YOKI shu o'qituvchiga VA/YOKI shu FANGA maxsus
+    // biriktirilgan xona(lar) — bo'lsa, jadval tuzishda ustuvor (barchasi tekshiriladi,
+    // natijalar birlashtiriladi)
     const assignedRooms = [...new Set([
       ...groupIds.flatMap((gid) => [...(groupRoomMap.get(gid) || [])]),
       ...(teacherRoomMap.get(w.teacherId) || []),
+      ...(subjectRoomMap.get(w.subjectId) || []),
     ])]
     // QAT'IY biriktirish (exclusive): guruh(lar) faqat shu xona(lar)da dars o'tadi.
     // Bir nechta guruh bo'lsa — kesishma (hammasiga mos xona). Kesishma bo'sh bo'lsa — ziddiyat.
@@ -182,7 +194,7 @@ export async function loadData(prisma, semester = 1, opts = {}) {
           && fitByFaculty.every((r) => r.capacity > LARGE_ROOM_CAPACITY)) {
           ev.reason = `ma'ruza, guruh ${ev.groupSize} kishilik — mos sig'imli xonalarning barchasi katta auditoriya (${LARGE_ROOM_CAPACITY}+ o'rin), ular faqat ${LARGE_ROOM_CAPACITY} dan ortiq talabali ma'ruzalarga ajratiladi`
         } else {
-          ev.reason = "faqat maxsus xonalar mos keladi, lekin bu guruh/o'qituvchi/yo'nalishga kirish ruxsati berilmagan"
+          ev.reason = "faqat maxsus xonalar mos keladi, lekin bu guruh/o'qituvchi/yo'nalish/fanga kirish ruxsati berilmagan"
         }
         infeasible.push(ev)
       }

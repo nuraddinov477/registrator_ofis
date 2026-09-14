@@ -11,6 +11,7 @@ const KINDS = [
   { value: 'teacher', label: "O'qituvchi" },
   { value: 'group', label: 'Guruh' },
   { value: 'specialty', label: 'Mutaxassislik' },
+  { value: 'subject', label: 'Fan' },
 ]
 
 export default function RoomPermissionsModal({ room, onClose }) {
@@ -18,6 +19,7 @@ export default function RoomPermissionsModal({ room, onClose }) {
   const teachers = useCollection('teachers')
   const groups = useCollection('groups')
   const specialties = useCollection('specialties')
+  const subjects = useCollection('subjects')
   const faculties = useCollection('faculties')
   const [kind, setKind] = useState('teacher')
   const [targetId, setTargetId] = useState('')
@@ -32,6 +34,8 @@ export default function RoomPermissionsModal({ room, onClose }) {
 
   const nonGroupOptions = (k) => (k === 'teacher'
     ? teachers.map((t) => ({ value: t.id, label: t.fullName }))
+    : k === 'subject'
+    ? subjects.map((s) => ({ value: s.id, label: s.name }))
     : specialties.map((s) => ({ value: s.id, label: s.name })))
 
   // Guruh uchun kaskad: fakultet → kurs → guruh
@@ -42,6 +46,7 @@ export default function RoomPermissionsModal({ room, onClose }) {
   const labelOf = (p) => {
     if (p.teacherId != null) return { kind: "O'qituvchi", name: p.teacher?.fullName ?? teachers.find((t) => t.id === p.teacherId)?.fullName }
     if (p.groupId != null) return { kind: 'Guruh', name: p.group?.name ?? groups.find((g) => g.id === p.groupId)?.name }
+    if (p.subjectId != null) return { kind: 'Fan', name: p.subject?.name ?? subjects.find((s) => s.id === p.subjectId)?.name }
     return { kind: 'Mutaxassislik', name: p.specialty?.name ?? specialties.find((s) => s.id === p.specialtyId)?.name }
   }
 
@@ -53,6 +58,7 @@ export default function RoomPermissionsModal({ room, onClose }) {
     const payload = { roomId: room.id, exclusive: kind === 'group' && exclusive }
     if (kind === 'teacher') { if (!targetId) return setErr('O\'qituvchini tanlang'); payload.teacherId = targetId }
     else if (kind === 'specialty') { if (!targetId) return setErr('Yo\'nalishni tanlang'); payload.specialtyId = targetId }
+    else if (kind === 'subject') { if (!targetId) return setErr('Fanni tanlang'); payload.subjectId = targetId }
     else { if (!groupId) return setErr('Guruhni tanlang'); payload.groupId = groupId }
     try {
       await db.add('roomPermissions', payload)
