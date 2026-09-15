@@ -286,6 +286,12 @@ model User {
   // Super Admin qo'yadigan shaxsiy cheklovlar (JSON-string):
   //   { readOnly?: bool, denyWrite?: [resource...], denyRead?: [section...] }
   restrictions String?
+  // Eng yuqori (egalik) darajasi — login/parolga BOG'LIQ EMAS, shu sabab hisob egasi
+  // o'z login/parolini erkin o'zgartirsa ham bu huquq saqlanadi. Umumiy CRUD (PUT
+  // /users) orqali o'zgartirilmaydi (schemas.js'da yo'q) — faqat to'g'ridan-to'g'ri
+  // DB orqali beriladi. Egasidan boshqa hech kim (boshqa Super Admin'lar ham) buni
+  // o'zi yoki boshqalarga bera olmaydi.
+  isOwner      Boolean     @default(false)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 }

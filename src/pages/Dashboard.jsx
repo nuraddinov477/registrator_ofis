@@ -10,7 +10,7 @@ import {
 import { useCollection } from '../data/store'
 import { api, auth } from '../api/client'
 
-const isDeveloper = () => auth.user()?.login === 'developer'
+const isDeveloper = () => !!auth.user()?.isOwner
 
 // Texnik xizmat rejimi + barcha akkauntlarni bloklash — FAQAT "developer" login bilan
 // kirilganda ko'rinadi (boshqa Super Admin hisoblariga, jumladan superadmin/admin'ga

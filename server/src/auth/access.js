@@ -57,7 +57,7 @@ export function assignableRoles(user) {
 // "developer" hisobi hech qachon cheklanmaydi (login bo'yicha, rol emas — shu sabab
 // developer boshqa Super Admin hisoblariga cheklov qo'ya oladi, lekin ular developer'ga
 // qo'ya olmaydi va o'zlariga qo'yilgan cheklovdan qochib qutula olmaydi).
-const isUnrestrictable = (user) => user?.login === 'developer'
+const isUnrestrictable = (user) => !!user?.isOwner
 
 // Developer qo'ygan shaxsiy cheklovlarni o'qiydi. Oldin Super Admin har doim cheklovdan
 // mustasno edi — endi FAQAT developer mustasno, shu bilan developer boshqa Super Admin
@@ -106,12 +106,12 @@ export const requireWrite = (resource) => (req, res, next) => {
 // ── Middleware: boshqa Super Admin hisobini o'chirishdan himoya (PUT scopeAssertUsers
 // orqali tahrirlashni allaqachon bloklaydi — bu DELETE uchun xuddi shu qoida) ──
 export const protectSuperAdminTarget = () => async (req, res, next) => {
-  if (!isSuperAdmin(req.user) || req.user.login === 'developer') return next()
+  if (!isSuperAdmin(req.user) || isUnrestrictable(req.user)) return next()
   const id = Number(req.params.id)
   if (!id) return next()
   const target = await prisma.user.findUnique({ where: { id } })
   if (target?.role === SUPER && target.id !== req.user.sub) {
-    return res.status(403).json({ error: 'Boshqa Super Admin hisobini faqat developer boshqaradi' })
+    return res.status(403).json({ error: 'Boshqa Super Admin hisobini faqat egasi boshqaradi' })
   }
   next()
 }
@@ -131,18 +131,20 @@ export const requireRead = (resource) => (req, res, next) => {
 
 const NONE = { id: -1 } // hech narsaga mos kelmaydigan filtr (birlik biriktirilmagan holat)
 
-// "developer" hisobini har qanday foydalanuvchi ro'yxatidan chetlatadigan qo'shimcha
+// Egalik (isOwner) hisobini har qanday foydalanuvchi ro'yxatidan chetlatadigan qo'shimcha
 // filtr — Audit jurnalidagi ismini emas (hisobdorlik saqlanadi), faqat "Foydalanuvchilar"
-// ro'yxatida ko'rinishini yashiradi. Boshqa filtr bilan birlashtiriladi (AND).
-const HIDE_DEVELOPER = { login: { not: 'developer' } }
-const withoutDeveloper = (where) => (where === NONE ? NONE : { ...where, ...HIDE_DEVELOPER })
+// ro'yxatida ko'rinishini yashiradi. login'ga emas isOwner'ga bog'liq — shu sabab egasi
+// login/parolini o'zgartirsa ham bu qoida to'g'ri ishlayveradi. Boshqa filtr bilan
+// birlashtiriladi (AND).
+const HIDE_OWNER = { isOwner: false }
+const withoutOwner = (where) => (where === NONE ? NONE : { ...where, ...HIDE_OWNER })
 
 // ── LIST/GET uchun Prisma `where` filtri (null = filtrsiz, hammasini ko'radi) ──
 export function scopeWhere(resource, user) {
   if (isSuperAdmin(user)) {
-    // Developer'ning o'zidan boshqa HECH KIM (boshqa Super Admin'lar ham) "developer"
-    // hisobini ro'yxatda/qidiruvda ko'rmaydi.
-    if (resource === 'users' && !isUnrestrictable(user)) return HIDE_DEVELOPER
+    // Egasidan boshqa HECH KIM (boshqa Super Admin'lar ham) egalik hisobini
+    // ro'yxatda/qidiruvda ko'rmaydi.
+    if (resource === 'users' && !isUnrestrictable(user)) return HIDE_OWNER
     return null
   }
   const role = user?.role
@@ -151,7 +153,7 @@ export function scopeWhere(resource, user) {
     const F = user?.facultyId ?? null
     if (resource === 'groups' || resource === 'specialties') return F ? { facultyId: F } : NONE
     if (resource === 'workloads') return F ? { groups: { some: { group: { facultyId: F } } } } : NONE
-    if (resource === 'users') return withoutDeveloper(F ? { facultyId: F } : NONE)
+    if (resource === 'users') return withoutOwner(F ? { facultyId: F } : NONE)
     return null // boshqa (reference) resurslarni o'qiy oladi
   }
 
@@ -159,7 +161,7 @@ export function scopeWhere(resource, user) {
     const D = user?.departmentId ?? null
     if (resource === 'teachers') return D ? { departmentId: D } : NONE
     if (resource === 'workloads') return D ? { teacher: { departmentId: D } } : NONE
-    if (resource === 'users') return withoutDeveloper(D ? { departmentId: D } : NONE)
+    if (resource === 'users') return withoutOwner(D ? { departmentId: D } : NONE)
     return null
   }
 
@@ -185,17 +187,21 @@ async function deriveFacultyId(data, existing) {
 
 // `users` resursi uchun yozish qamrovi: rol-limiti, cheklov himoyasi, birlikka majburlash
 async function scopeAssertUsers(user, data, existing) {
+  // isOwner hech qachon generic PUT orqali o'zgartirilmaydi (schemas.js'da ham yo'q —
+  // bu shunchaki qo'shimcha himoya qatlami, kim yozayotganidan qat'i nazar)
+  if (data) delete data.isOwner
+
   const allowed = assignableRoles(user)
   if (data?.role && !allowed.includes(data.role)) {
     throw new AccessError(`Siz "${data.role}" rolini bera olmaysiz`)
   }
 
   if (isSuperAdmin(user)) {
-    // Boshqa Super Admin hisobini FAQAT developer o'zgartira/bloklay oladi — bitta
-    // Super Admin ikkinchisini (jumladan o'zini bloklashga urinishini) to'xtatib
+    // Boshqa Super Admin hisobini FAQAT egasi (isOwner) o'zgartira/bloklay oladi —
+    // bitta Super Admin ikkinchisini (jumladan o'zini bloklashga urinishini) to'xtatib
     // qo'ya olmasligi uchun. O'zini tahrirlash (masalan parol yangilash) istisno.
-    if (existing?.role === SUPER && existing.id !== user.sub && user.login !== 'developer') {
-      throw new AccessError('Boshqa Super Admin hisobini faqat developer boshqaradi')
+    if (existing?.role === SUPER && existing.id !== user.sub && !isUnrestrictable(user)) {
+      throw new AccessError('Boshqa Super Admin hisobini faqat egasi boshqaradi')
     }
     // Super Admin: cheklov qo'yadi; ko'rinish uchun facultyId derivatsiyasi (agar berilmagan)
     if (data && data.facultyId == null) {

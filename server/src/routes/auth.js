@@ -18,9 +18,11 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   if (!user || !user.active || !(await verifyPassword(password, user.passwordHash))) {
     return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' })
   }
-  // Texnik xizmat rejimida FAQAT "developer" kira oladi — Super Admin'lar ham emas
-  // (maintenanceGate.js bilan bir xil qoida, shu yerda LOGIN bosqichida tekshiriladi).
-  if (login !== 'developer' && await isMaintenanceOn()) {
+  // Texnik xizmat rejimida FAQAT egalik (isOwner) hisobi kira oladi — Super Admin'lar
+  // ham emas (maintenanceGate.js bilan bir xil qoida, shu yerda LOGIN bosqichida
+  // tekshiriladi). login'ga emas, isOwner belgisiga qarab — shu sabab egasi login/
+  // parolini o'zgartirsa ham bu huquq saqlanadi.
+  if (!user.isOwner && await isMaintenanceOn()) {
     return res.status(503).json({ error: "Sayt hozir texnik xizmat ko'rsatish tufayli vaqtincha yopiq", maintenance: true })
   }
   await audit('Tizimga kirdi', login, req)
@@ -29,7 +31,7 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
     user: {
       id: user.id, login: user.login, fullName: user.fullName, role: user.role,
       facultyId: user.facultyId, departmentId: user.departmentId, teacherId: user.teacherId,
-      restrictions: user.restrictions,
+      restrictions: user.restrictions, isOwner: user.isOwner,
     },
   })
 }))
@@ -39,5 +41,6 @@ authRouter.get('/me', requireAuth, (req, res) => {
   res.json({
     id: req.user.sub, login: req.user.login, fullName: req.user.name, role: req.user.role,
     facultyId: req.user.facultyId ?? null, departmentId: req.user.departmentId ?? null, teacherId: req.user.teacherId ?? null,
+    isOwner: !!req.user.isOwner,
   })
 })

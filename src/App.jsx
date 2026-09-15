@@ -41,7 +41,7 @@ const PageLoading = () => (
 function useMaintenanceLock() {
   const [state, setState] = useState(null)
   useEffect(() => {
-    if (auth.user()?.login === 'developer') return
+    if (auth.user()?.isOwner) return
     let alive = true
     const check = () => api('/site-settings').then((s) => { if (alive) setState(s) }).catch(() => {})
     check()

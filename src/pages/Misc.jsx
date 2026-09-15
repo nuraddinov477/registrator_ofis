@@ -383,7 +383,7 @@ export function UsersPage() {
 
   const me = auth.user()
   const isSuper = me?.role === 'Super Admin'
-  const isDeveloper = me?.login === 'developer'
+  const isDeveloper = !!me?.isOwner
   const assignable = assignableRoles(me)
   // Birlik tanlovlari — yaratuvchi doirasiga cheklangan
   const deptOptions = isSuper ? departments : departments.filter((d) => d.facultyId === me?.facultyId)
@@ -469,7 +469,7 @@ export function UsersPage() {
               Admin nishonlarga esa FAQAT developer (boshqa Super Admin hisoblarini ham
               cheklay olishi uchun — developer'ning o'ziga esa hech qachon qo'llanilmaydi) */}
           {((isSuper && form.role && form.role !== 'Super Admin')
-            || (isDeveloper && form.role === 'Super Admin' && form.login !== 'developer')) && (
+            || (isDeveloper && form.role === 'Super Admin' && !form.isOwner)) && (
             <div className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
               <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">Cheklovlar (ixtiyoriy)</div>
               <label className="flex items-center gap-2 text-sm">

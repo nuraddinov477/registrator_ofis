@@ -9,6 +9,8 @@ export const signToken = (user) =>
       facultyId: user.facultyId ?? null,
       departmentId: user.departmentId ?? null,
       teacherId: user.teacherId ?? null,
+      // Eng yuqori (egalik) darajasi — login/parolga bog'liq emas (auth/access.js'ga qarang)
+      isOwner: !!user.isOwner,
     },
     config.jwt.secret,
     { expiresIn: config.jwt.expiresIn },

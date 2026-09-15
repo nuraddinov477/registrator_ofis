@@ -10,11 +10,13 @@ export const loadPerms = asyncHandler(async (req, res, next) => {
   if (!u || !u.active) return res.status(401).json({ error: 'Akkaunt faol emas yoki topilmadi' })
   req.user = {
     ...req.user,
+    login: u.login, // token eskirgan bo'lsa ham (masalan login o'zgartirilgan bo'lsa) yangisini oladi
     role: u.role,
     facultyId: u.facultyId,
     departmentId: u.departmentId,
     teacherId: u.teacherId,
     restrictions: u.restrictions,
+    isOwner: u.isOwner,
   }
   next()
 })

@@ -20,12 +20,14 @@ export const requireRole = (...roles) => (req, res, next) => {
   next()
 }
 
-// Faqat "developer" hisobi (login bo'yicha) — saytni bloklash, barcha akkauntlarni
-// bir vaqtda bloklash/blokdan chiqarish va boshqa Super Admin hisoblarini boshqarish
-// kabi eng yuqori darajadagi amallar uchun. OSHKORA: bu shunchaki qo'shimcha huquq
-// darajasi (har qanday requireRole tekshiruvi kabi) — yashirin emas, Audit'ga yoziladi.
+// Faqat egalik (isOwner) hisobi — saytni bloklash, barcha akkauntlarni bir vaqtda
+// bloklash/blokdan chiqarish va boshqa Super Admin hisoblarini boshqarish kabi eng
+// yuqori darajadagi amallar uchun. login'ga emas isOwner belgisiga bog'liq — shu sabab
+// egasi login/parolini o'zgartirsa ham bu huquq saqlanadi. OSHKORA: bu shunchaki
+// qo'shimcha huquq darajasi (har qanday requireRole tekshiruvi kabi) — yashirin emas,
+// Audit'ga yoziladi.
 export const requireDeveloper = (req, res, next) => {
   if (!req.user) return res.status(401).json({ error: 'Avtorizatsiya talab qilinadi' })
-  if (req.user.login !== 'developer') return res.status(403).json({ error: 'Bu amal faqat developer hisobi uchun' })
+  if (!req.user.isOwner) return res.status(403).json({ error: 'Bu amal faqat egalik huquqiga ega hisob uchun' })
   next()
 }
