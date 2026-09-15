@@ -201,14 +201,21 @@ export async function loadData(prisma, semester = 1, opts = {}) {
         room: -1,
       }
       ev.slots = applyTeacherConstraint(allowedSlots(ev.startPair, ev.endPair), ev.teacherId) // ruxsat etilgan slotlar
-      // Nomzod xonalar: biriktirilgan xona(lar) va sig'imi eng mos kelganlari oldinda —
-      // greedy shulardan birinchi bo'sh topganini tanlaydi (assignedRoom/roomFit soft cheklashlariga mos)
+      // Nomzod xonalar: biriktirilgan xona(lar) oldinda, keyin sig'imi bo'yicha saralanadi —
+      // greedy shulardan birinchi bo'sh topganini tanlaydi. ODATIY (bitta guruh) darsda ENG
+      // KICHIK mos xona afzal (roomFit soft cheklashiga mos, katta xonani behuda band qilmaslik).
+      // POTOK (bir nechta guruh BIRGA, groupIds.length>1) darsda ESA — teskarisi: ENG KATTA
+      // (katta zal) xona afzal — chunki potok guruhlarni BITTA xonaga jamlaydi, shu bilan
+      // ularning ALOHIDA kichik xonalari o'sha vaqt uchun BO'SHAB QOLADI (boshqa, potok
+      // bo'lmagan darslar uchun ishlatiladi) — roomFit bu holatda constraints.js'da
+      // qo'llanilmaydi (groupCost'ga qarang), shu sabab bu ustuvorlik SA davomida ham saqlanadi.
+      const isPotok = groupIds.length > 1
       const candidateRooms = roomMeta.filter((r) =>
         roomAllowed(r, ev) && (exclusiveRooms == null || exclusiveRooms.includes(r.id)))
       candidateRooms.sort((a, b) => {
         const aA = assignedRooms.includes(a.id) ? 0 : 1, bA = assignedRooms.includes(b.id) ? 0 : 1
         if (aA !== bA) return aA - bA
-        return a.capacity - b.capacity
+        return isPotok ? b.capacity - a.capacity : a.capacity - b.capacity
       })
       ev.rooms = candidateRooms.map((r) => r.id)
       ev.roomCapacities = Object.fromEntries(candidateRooms.map((r) => [r.id, r.capacity]))

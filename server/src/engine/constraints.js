@@ -81,9 +81,13 @@ export function groupCost(groupEvents, W = WEIGHTS) {
     if (e.assignedRooms && e.assignedRooms.length && e.room >= 0 && !e.assignedRooms.includes(e.room)) {
       cost += W.assignedRoom
     }
-    // Xona sig'imi guruh sonidan ancha ortiq bo'lmasin (+2 tolerantlik) — mos xona afzal
+    // Xona sig'imi guruh sonidan ancha ortiq bo'lmasin (+2 tolerantlik) — mos xona afzal.
+    // POTOK (bir nechta guruh birga, e.groupIds.length>1) darsga TEGISHLI EMAS — potok
+    // ATAYLAB kattaroq xonani band qiladi (guruhlarni bittaga jamlaydi), bu "behuda joy"
+    // emas, balki maqsad shu — aks holda bu jarima loadData.js'dagi "potok katta zalga"
+    // ustuvorligini SA davomida asta-sekin yo'qqa chiqarib qo'yardi.
     const cap = e.roomCapacities ? e.roomCapacities[e.room] : null
-    if (cap != null && cap - e.groupSize > 2) cost += (cap - e.groupSize - 2) * W.roomFit
+    if (cap != null && cap - e.groupSize > 2 && e.groupIds.length === 1) cost += (cap - e.groupSize - 2) * W.roomFit
   }
 
   const counts = []
