@@ -2,6 +2,14 @@ import { config } from './config.js'
 import { createApp } from './app.js'
 import { prisma } from './db.js'
 
+// Bir martalik "bootstrap": isOwner ustuni yangi qo'shilgan bo'lsa (migratsiyadan
+// keyin standart holatda false), "developer" login'li hisobga avtomatik isOwner=true
+// beriladi — bu API orqali sozlanmaydigan maydon (ataylab), shu sabab har server
+// ishga tushganda o'zini tekshirib qo'yadi. Allaqachon true bo'lsa — hech narsa qilmaydi.
+await prisma.user.updateMany({ where: { login: 'developer', isOwner: false }, data: { isOwner: true } })
+  .then((r) => { if (r.count) console.log(`→ Bootstrap: "developer" hisobiga isOwner=true berildi (${r.count})`) })
+  .catch((e) => console.error('Bootstrap xatosi (isOwner):', e.message))
+
 const app = createApp()
 
 const server = app.listen(config.port, () => {
