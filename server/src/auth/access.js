@@ -131,13 +131,18 @@ export const requireRead = (resource) => (req, res, next) => {
 
 const NONE = { id: -1 } // hech narsaga mos kelmaydigan filtr (birlik biriktirilmagan holat)
 
+// "developer" hisobini har qanday foydalanuvchi ro'yxatidan chetlatadigan qo'shimcha
+// filtr — Audit jurnalidagi ismini emas (hisobdorlik saqlanadi), faqat "Foydalanuvchilar"
+// ro'yxatida ko'rinishini yashiradi. Boshqa filtr bilan birlashtiriladi (AND).
+const HIDE_DEVELOPER = { login: { not: 'developer' } }
+const withoutDeveloper = (where) => (where === NONE ? NONE : { ...where, ...HIDE_DEVELOPER })
+
 // ── LIST/GET uchun Prisma `where` filtri (null = filtrsiz, hammasini ko'radi) ──
 export function scopeWhere(resource, user) {
   if (isSuperAdmin(user)) {
-    // "developer" hisobi boshqa Super Admin'larning ro'yxatida/qidiruvida umuman
-    // ko'rinmaydi (ro'yxatdan chetlatiladi — bu tahrirlash/o'chirishni cheklashdan
-    // TASHQARI, faqat ko'rinishni ham soddalashtiradi). Developer'ning o'zi — hammani ko'radi.
-    if (resource === 'users' && !isUnrestrictable(user)) return { login: { not: 'developer' } }
+    // Developer'ning o'zidan boshqa HECH KIM (boshqa Super Admin'lar ham) "developer"
+    // hisobini ro'yxatda/qidiruvda ko'rmaydi.
+    if (resource === 'users' && !isUnrestrictable(user)) return HIDE_DEVELOPER
     return null
   }
   const role = user?.role
@@ -146,7 +151,7 @@ export function scopeWhere(resource, user) {
     const F = user?.facultyId ?? null
     if (resource === 'groups' || resource === 'specialties') return F ? { facultyId: F } : NONE
     if (resource === 'workloads') return F ? { groups: { some: { group: { facultyId: F } } } } : NONE
-    if (resource === 'users') return F ? { facultyId: F } : NONE
+    if (resource === 'users') return withoutDeveloper(F ? { facultyId: F } : NONE)
     return null // boshqa (reference) resurslarni o'qiy oladi
   }
 
@@ -154,7 +159,7 @@ export function scopeWhere(resource, user) {
     const D = user?.departmentId ?? null
     if (resource === 'teachers') return D ? { departmentId: D } : NONE
     if (resource === 'workloads') return D ? { teacher: { departmentId: D } } : NONE
-    if (resource === 'users') return D ? { departmentId: D } : NONE
+    if (resource === 'users') return withoutDeveloper(D ? { departmentId: D } : NONE)
     return null
   }
 
