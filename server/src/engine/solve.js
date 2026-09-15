@@ -7,12 +7,13 @@ import { dayOf, pairOf, allowedSlots, PAIR_TIMES } from './timeslots.js'
 // Aniq, tushunarli tashxis — nima uchun jadval to'liq tuzilmadi (UI'da ko'rsatiladi).
 // Har bir muammoni ANIQ manzili bilan qaytaradi: qaysi guruh/o'qituvchi/dars va nega.
 export function buildDiagnostics(ctx) {
-  const gName = new Map(), gCourse = new Map(), gStart = new Map()
+  const gName = new Map(), gCourse = new Map(), gStart = new Map(), gEnd = new Map()
   for (const ev of ctx.events) {
     ev.groupIds.forEach((gid, k) => {
       if (!gName.has(gid)) gName.set(gid, ev.groupNames?.[k] || `#${gid}`)
       if (!gCourse.has(gid)) gCourse.set(gid, ev.course ?? 1)
       if (!gStart.has(gid)) gStart.set(gid, ev.startPair ?? 1)
+      if (!gEnd.has(gid)) gEnd.set(gid, ev.endPair ?? 6)
     })
   }
 
@@ -21,12 +22,13 @@ export function buildDiagnostics(ctx) {
   for (const [gid, evs] of ctx.byGroup) {
     const course = gCourse.get(gid) ?? 1
     const startPair = gStart.get(gid) ?? 1
-    const capacity = allowedSlots(startPair).length // haftalik mavjud slot
+    const endPair = gEnd.get(gid) ?? 6
+    const capacity = allowedSlots(startPair, endPair).length // haftalik mavjud slot
     const needed = evs.length
     if (needed > capacity) {
       groupOverload.push({
         group: gName.get(gid), course, needed, capacity,
-        shift: `${startPair}-juftlikdan (${PAIR_TIMES[startPair - 1]}) boshlanadi`,
+        shift: `${startPair}-${endPair}-juftlik oralig'i (${PAIR_TIMES[startPair - 1]} – ${PAIR_TIMES[endPair - 1]})`,
       })
     }
   }
@@ -97,8 +99,8 @@ function verify(ctx) {
 
 // To'liq gibrid yechim: yuklash → greedy → simulated annealing → tekshirish
 export async function solve(prisma, options = {}) {
-  const { semester = 1, maxMs = 5000, groupStartPairs = {}, ...annealOpts } = options
-  const ctx = await loadData(prisma, semester, { groupStartPairs })
+  const { semester = 1, maxMs = 5000, groupStartPairs = {}, groupEndPairs = {}, ...annealOpts } = options
+  const ctx = await loadData(prisma, semester, { groupStartPairs, groupEndPairs })
 
   if (ctx.events.length === 0) {
     return { ctx, semester, empty: true, report: { hard: 0, soft: 0, feasible: true, unplaced: 0, breakdown: { group: 0, teacher: 0, room: 0 }, infeasibleEvents: [] }, diagnostics: { groupOverload: [], teacherOverload: [], blocked: [], unresolved: [] }, entries: [] }

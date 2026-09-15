@@ -10,11 +10,12 @@ import { DAY_NAMES, DAYS, PAIRS } from '../engine/timeslots.js'
 
 export const scheduleRouter = Router()
 
-// req.body.groupStartPairs — { [groupId]: startPair } (superadmin har bir guruhning
-// boshlanish juftligini alohida tanlaydi). Yaroqsiz/chegaradan tashqari qiymatlar
-// e'tiborsiz qoldiriladi (loadData.js'da ham standart 1'ga tushadi).
-const parseGroupStartPairs = (body) => {
-  const src = body?.groupStartPairs
+// req.body.groupStartPairs / groupEndPairs — { [groupId]: pair } (superadmin har bir
+// guruhning [boshlanish..tugash] juftlik oralig'ini alohida tanlaydi). Yaroqsiz/
+// chegaradan tashqari qiymatlar e'tiborsiz qoldiriladi (loadData.js'da ham standart
+// 1..6'ga tushadi).
+const parsePairMap = (body, key) => {
+  const src = body?.[key]
   if (!src || typeof src !== 'object' || Array.isArray(src)) return {}
   const out = {}
   for (const [gid, v] of Object.entries(src)) {
@@ -31,10 +32,11 @@ scheduleRouter.post('/generate', requireRole('Super Admin', 'Fakultet operatori'
   if (restrictionBlocks(req.user, 'schedule', 'write')) return res.status(403).json({ error: 'Ruxsat yetarli emas (cheklangan)' })
   const semester = Number(req.body?.semester) || 1
   const maxMs = Math.min(120_000, Number(req.body?.maxMs) || 5000)
-  const groupStartPairs = parseGroupStartPairs(req.body)
+  const groupStartPairs = parsePairMap(req.body, 'groupStartPairs')
+  const groupEndPairs = parsePairMap(req.body, 'groupEndPairs')
 
   const run = await prisma.schedulingRun.create({ data: { semester, status: 'running' } })
-  startGenerateJob({ runId: run.id, semester, maxMs, groupStartPairs })
+  startGenerateJob({ runId: run.id, semester, maxMs, groupStartPairs, groupEndPairs })
   await audit('Jadval generatsiyasi boshlandi', `run #${run.id}`, req)
 
   res.status(202).json({
@@ -50,12 +52,13 @@ scheduleRouter.post('/generate', requireRole('Super Admin', 'Fakultet operatori'
 // qolishi mumkin va nega. "Jadval yaratish" dan oldin tekshirish uchun.
 scheduleRouter.post('/diagnose', requireRole('Super Admin', 'Fakultet operatori'), asyncHandler(async (req, res) => {
   const semester = Number(req.body?.semester) || 1
-  const groupStartPairs = parseGroupStartPairs(req.body)
-  const ctx = await loadData(prisma, semester, { groupStartPairs })
+  const groupStartPairs = parsePairMap(req.body, 'groupStartPairs')
+  const groupEndPairs = parsePairMap(req.body, 'groupEndPairs')
+  const ctx = await loadData(prisma, semester, { groupStartPairs, groupEndPairs })
   const diagnostics = buildDiagnostics(ctx)
   const totalEvents = ctx.events.length
   const problems = diagnostics.groupOverload.length + diagnostics.teacherOverload.length + diagnostics.blocked.length
-  res.json({ semester, groupStartPairs, totalEvents, ok: problems === 0, diagnostics })
+  res.json({ semester, groupStartPairs, groupEndPairs, totalEvents, ok: problems === 0, diagnostics })
 }))
 
 // GET /api/schedule/runs  — yaratilgan jadvallar ro'yxati.

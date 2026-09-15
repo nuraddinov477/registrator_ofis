@@ -45,10 +45,12 @@ export default function Schedule() {
   const [genOpen, setGenOpen] = useState(false)
   const [semester, setSemester] = useState('1')
   const [seconds, setSeconds] = useState(5)
-  // Har bir guruhning BOSHLANISH juftligi: { [groupId]: 1..6 } (real soati — PAIR_TIMES).
-  // Superadmin har bir guruhni ALOHIDA tanlaydi. null = hali ishga tushmagan (guruhlar
-  // yuklangach standart qiymatlar qo'yiladi: 1-kurs → 4 (13:00), qolganlari → 1 (8:00)).
+  // Har bir guruhning [BOSHLANISH..TUGASH] juftlik oralig'i: { [groupId]: 1..6 } (real
+  // soatlar — PAIR_TIMES). Superadmin har bir guruhni ALOHIDA tanlaydi. null = hali ishga
+  // tushmagan (guruhlar yuklangach standart qiymatlar qo'yiladi: 1,2,3-kurs → 1-6 oralig'i
+  // to'liq kun, 4-kurs → 1-3 oralig'i).
   const [groupStartPairs, setGroupStartPairs] = useState(null)
+  const [groupEndPairs, setGroupEndPairs] = useState(null)
   const [groupFilter, setGroupFilter] = useState('') // guruh ro'yxatida qidirish
   const [diag, setDiag] = useState(null) // "Tekshirish" natijasi (jadval yaratmasdan)
   const [diagBusy, setDiagBusy] = useState(false)
@@ -66,7 +68,9 @@ export default function Schedule() {
 
   const run = runs.find((r) => r.id === runId) || null
   const startPairs = groupStartPairs || {}
+  const endPairs = groupEndPairs || {}
   const startPairOf = (gid) => startPairs[gid] ?? 1
+  const endPairOf = (gid) => endPairs[gid] ?? 6
   const courseNumbers = [...new Set(groups.map((g) => g.course))].sort((a, b) => a - b)
   const filteredGroups = groups
     .filter((g) => !groupFilter || g.name.toLowerCase().includes(groupFilter.toLowerCase()))
@@ -79,9 +83,11 @@ export default function Schedule() {
       const [rs, gs] = await Promise.all([api('/schedule/runs?all=1'), api('/groups')])
       setRuns(rs); setGroups(gs); setErr('')
       setGroupId((cur) => cur ?? gs[0]?.id ?? null)
-      // Standart: barcha guruh 1-juftlikdan (8:00) boshlanadi — kursga bog'liq maxsus qoida
-      // yo'q, superadmin kerak bo'lsa har birini (yoki butun kursni) o'zi o'zgartiradi
+      // Standart: 1,2,3-kurs — 1-6 juftlik oralig'i (to'liq kun, ertalabdan), 4-kurs —
+      // 1-3 oralig'i (faqat ertalabki qism). Superadmin kerak bo'lsa har birini (yoki
+      // butun kursni) o'zi o'zgartiradi.
       setGroupStartPairs((cur) => cur ?? Object.fromEntries(gs.map((g) => [g.id, 1])))
+      setGroupEndPairs((cur) => cur ?? Object.fromEntries(gs.map((g) => [g.id, g.course === 4 ? 3 : 6])))
       const active = rs.filter((r) => !r.archived)
       const pick = selectId ?? (active.find((r) => r.status === 'done') || active[0] || rs[0])?.id ?? null
       setRunId((cur) => selectId ?? cur ?? pick)
@@ -132,7 +138,7 @@ export default function Schedule() {
     setDiagBusy(true); setErr('')
     try {
       const r = await api('/schedule/diagnose', {
-        method: 'POST', body: { semester: Number(semester), groupStartPairs: startPairs },
+        method: 'POST', body: { semester: Number(semester), groupStartPairs: startPairs, groupEndPairs: endPairs },
       })
       setDiag(r)
     } catch (e) { setErr(e.message) } finally { setDiagBusy(false) }
@@ -163,13 +169,26 @@ export default function Schedule() {
       return next
     })
   }
+  // Bitta guruhning tugash juftligini o'zgartiradi
+  const setGroupEnd = (gid, pair) => {
+    setGroupEndPairs((prev) => ({ ...(prev || {}), [gid]: pair }))
+  }
+  // Butun kursdagi barcha guruhlarni bir zumda shu juftlikда tugatish (tezkor ko'p tanlov)
+  const setCourseEnd = (course, pair) => {
+    const courseGroups = groups.filter((g) => g.course === course)
+    setGroupEndPairs((prev) => {
+      const next = { ...(prev || {}) }
+      for (const g of courseGroups) next[g.id] = pair
+      return next
+    })
+  }
 
   // Jadval yaratish: generate → done bo'lguncha poll → natijani ko'rsatish.
   const generate = async () => {
     setGenOpen(false); setBusy('Boshlanmoqda…'); setErr('')
     try {
       const { runId: newId } = await api('/schedule/generate', {
-        method: 'POST', body: { semester: Number(semester), maxMs: Number(seconds) * 1000, groupStartPairs: startPairs },
+        method: 'POST', body: { semester: Number(semester), maxMs: Number(seconds) * 1000, groupStartPairs: startPairs, groupEndPairs: endPairs },
       })
       let final = null
       for (let i = 0; i < 150; i++) {
@@ -483,20 +502,30 @@ export default function Schedule() {
           <Field label="Optimallashtirish vaqti (soniya)">
             <input className="input" type="number" min="1" max="120" value={seconds} onChange={(e) => setSeconds(e.target.value)} />
           </Field>
-          <Field label="Boshlanish vaqti — kurs bo'yicha tezkor tanlash">
+          <Field label="Juftlik oralig'i — kurs bo'yicha tezkor tanlash">
             <div className="space-y-1.5">
               {courseNumbers.map((c) => {
                 const courseGroups = groups.filter((g) => g.course === c)
-                const uniform = new Set(courseGroups.map((g) => startPairOf(g.id)))
-                const value = uniform.size === 1 ? [...uniform][0] : ''
+                const uniformStart = new Set(courseGroups.map((g) => startPairOf(g.id)))
+                const uniformEnd = new Set(courseGroups.map((g) => endPairOf(g.id)))
+                const startValue = uniformStart.size === 1 ? [...uniformStart][0] : ''
+                const endValue = uniformEnd.size === 1 ? [...uniformEnd][0] : ''
                 return (
                   <div key={c} className="flex items-center gap-2">
                     <span className="w-16 text-sm text-slate-500 dark:text-slate-400">{c}-kurs</span>
-                    <select className="input" value={value}
+                    <select className="input" value={startValue}
                       onChange={(e) => setCourseStart(c, Number(e.target.value))}>
-                      {value === '' && <option value="" disabled>— turlicha —</option>}
+                      {startValue === '' && <option value="" disabled>— turlicha —</option>}
                       {PAIR_TIMES.map((t, i) => (
-                        <option key={i} value={i + 1}>{i + 1}-juftlik ({t})</option>
+                        <option key={i} value={i + 1}>{i + 1}-juftlikdan ({t})</option>
+                      ))}
+                    </select>
+                    <span className="text-xs text-slate-400">—</span>
+                    <select className="input" value={endValue}
+                      onChange={(e) => setCourseEnd(c, Number(e.target.value))}>
+                      {endValue === '' && <option value="" disabled>— turlicha —</option>}
+                      {PAIR_TIMES.map((t, i) => (
+                        <option key={i} value={i + 1}>{i + 1}-juftlikkacha ({t})</option>
                       ))}
                     </select>
                   </div>
@@ -504,7 +533,7 @@ export default function Schedule() {
               })}
             </div>
             <p className="mt-1.5 text-xs text-slate-400">
-              Guruh tanlangan juftlikdan OLDINGI vaqtga hech qachon qo'yilmaydi (qat'iy). Kunlik dars soni 2 tadan kam, 4 tadan ko'p bo'lmaydi. Kurs qatori shu kursdagi barcha guruhlarni birdan belgilaydi — pastda har bir guruhni alohida ham o'zgartirish mumkin.
+              Guruh tanlangan oraliqdan TASHQARIGA hech qachon qo'yilmaydi (qat'iy) va oraliq ichida bo'sh oyna qoldirmaslik yuqori ustuvorlik bilan izlanadi. Kunlik dars soni 2 tadan kam, 4 tadan ko'p bo'lmaydi. Kurs qatori shu kursdagi barcha guruhlarni birdan belgilaydi — pastda har bir guruhni alohida ham o'zgartirish mumkin.
             </p>
           </Field>
           <Field label="Guruh bo'yicha alohida">
@@ -514,12 +543,21 @@ export default function Schedule() {
               {filteredGroups.map((g) => (
                 <div key={g.id} className="flex items-center justify-between gap-2 rounded-md px-2 py-1 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">
                   <span>{g.name} <span className="text-xs text-slate-400">({g.course}-kurs)</span></span>
-                  <select className="input h-8 w-auto py-0 text-xs" value={startPairOf(g.id)}
-                    onChange={(e) => setGroupStart(g.id, Number(e.target.value))}>
-                    {PAIR_TIMES.map((t, i) => (
-                      <option key={i} value={i + 1}>{t}</option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-1">
+                    <select className="input h-8 w-auto py-0 text-xs" value={startPairOf(g.id)}
+                      onChange={(e) => setGroupStart(g.id, Number(e.target.value))}>
+                      {PAIR_TIMES.map((t, i) => (
+                        <option key={i} value={i + 1}>{t}</option>
+                      ))}
+                    </select>
+                    <span className="text-xs text-slate-400">—</span>
+                    <select className="input h-8 w-auto py-0 text-xs" value={endPairOf(g.id)}
+                      onChange={(e) => setGroupEnd(g.id, Number(e.target.value))}>
+                      {PAIR_TIMES.map((t, i) => (
+                        <option key={i} value={i + 1}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               ))}
             </div>

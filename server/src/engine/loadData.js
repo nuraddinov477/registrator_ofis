@@ -14,13 +14,18 @@ export const MAIN_HALL_MAX = 100
 // Event = jadvalga joylanadigan eng kichik birlik. Guruh/o'qituvchi/fan QAT'IY,
 // faqat slot va xona o'zgaradi (qidiruv fazosi shu).
 export async function loadData(prisma, semester = 1, opts = {}) {
-  // groupStartPairs — har bir guruhning BOSHLANISH juftligi (1..6, real soati uchun
-  // timeslots.js'dagi PAIR_TIMES'ga qarang): { [groupId]: startPair }. Superadmin har bir
-  // guruhni ALOHIDA tanlaydi. Ko'rsatilmagan guruhlar uchun standart — 1 (8:00).
-  const { groupStartPairs = {} } = opts
+  // groupStartPairs/groupEndPairs — har bir guruhning [boshlanish..tugash] juftlik
+  // oralig'i (1..6, real soatlar uchun timeslots.js'dagi PAIR_TIMES'ga qarang):
+  // { [groupId]: pair }. Superadmin har bir guruhni ALOHIDA tanlaydi. Ko'rsatilmagan
+  // guruhlar uchun standart — 1 (8:00) dan 6 (tugash, 17:20) gacha, ya'ni to'liq kun.
+  const { groupStartPairs = {}, groupEndPairs = {} } = opts
   const startPairOf = (gid) => {
     const v = Number(groupStartPairs[gid])
     return Number.isInteger(v) && v >= 1 && v <= PAIRS ? v : 1
+  }
+  const endPairOf = (gid, start) => {
+    const v = Number(groupEndPairs[gid])
+    return Number.isInteger(v) && v >= start && v <= PAIRS ? v : PAIRS
   }
   const [workloads, rooms, teacherConstraints] = await Promise.all([
     prisma.workload.findMany({
@@ -180,6 +185,7 @@ export async function loadData(prisma, semester = 1, opts = {}) {
         subjectName: w.subject?.name,
         course: wgroups[0]?.course ?? 1,
         startPair: startPairOf(wgroups[0]?.id), // guruhning boshlanish juftligi (constraints.js dayStart uchun)
+        endPair: endPairOf(wgroups[0]?.id, startPairOf(wgroups[0]?.id)), // guruhning tugash juftligi
         groupSize: wgroups.reduce((s, g) => s + (g.size ?? 0), 0), // barcha guruh talabalari yig'indisi
         specialtyIds: [...new Set(wgroups.map((g) => g.specialtyId).filter((v) => v != null))],
         facultyIds: [...new Set(wgroups.map((g) => g.facultyId).filter((v) => v != null))],
@@ -188,7 +194,7 @@ export async function loadData(prisma, semester = 1, opts = {}) {
         slot: -1,
         room: -1,
       }
-      ev.slots = applyTeacherConstraint(allowedSlots(ev.startPair), ev.teacherId) // ruxsat etilgan slotlar
+      ev.slots = applyTeacherConstraint(allowedSlots(ev.startPair, ev.endPair), ev.teacherId) // ruxsat etilgan slotlar
       // Nomzod xonalar: biriktirilgan xona(lar) va sig'imi eng mos kelganlari oldinda —
       // greedy shulardan birinchi bo'sh topganini tanlaydi (assignedRoom/roomFit soft cheklashlariga mos)
       const candidateRooms = roomMeta.filter((r) =>

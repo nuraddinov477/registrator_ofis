@@ -11,9 +11,12 @@ export const WEIGHTS = {
   // bilan "1 oyna 4 xil guruhda" bir xil jarima olardi — kvadratik esa TO'PLANIB QOLGAN
   // oynani ancha qattiqroq jazolaydi, shu bilan (butunlay yo'qotib bo'lmasa) oynalarni
   // KO'P GURUH/O'QITUVCHI orasida TENG taqsimlashga majburlaydi. groupGap > teacherGap —
-  // avval talaba, keyin o'qituvchi oynasi kamaytiriladi/taqsimlanadi.
-  teacherGap: 2,
-  groupGap: 3,
+  // avval talaba, keyin o'qituvchi oynasi kamaytiriladi/taqsimlanadi. Vazn ATAYIN YUQORI
+  // (qat'iy ustuvorlik so'ralgan) — bitta oyna deyarli har qanday boshqa yumshoq
+  // cheklovdan (subjectSpread'dan tashqari) og'irroq, shu sabab optimallashtiruvchi
+  // oynani yo'qotish uchun boshqa narsalarni qurbon qilishga tayyor turadi.
+  teacherGap: 20,
+  groupGap: 40,
   consecutive: 3, // 4 tadan ortiq ketma-ket dars (har ortig'i)
   subjectSpread: 100, // bir fan bir kunda ikkinchi marta kelsa (ketma-ket bo'lsa ham, orada tanaffus bo'lsa ham) — boshqa kunga ko'chirilishi kerak. Vazn ATAYIN baland: teacherGap/lonePair/groupDayMin kabi "kunlarni siqish" tendensiyasidan HAR DOIM ustun turishi kerak (bir fan kuni muhimroq)
   subjectConsecutiveDays: 18, // bir fan ketma-ket kunlarga tushsa (masalan Dush+Sesh) — 1 kun oralik yetarli, ortiqcha tanaffus shart emas
