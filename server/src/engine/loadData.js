@@ -87,6 +87,14 @@ export async function loadData(prisma, semester = 1, opts = {}) {
     tcMap.set(tc.teacherId, { blockedDays: new Set(blockedDays), allowedPairs: new Set(allowedPairs) })
   }
 
+  // Xonaga aniq (o'qituvchi/guruh/yo'nalish/fan) ruxsat berilganmi? — maxsus xona
+  // uchun kirish sharti VA bino-fakultet egaligini chetlab o'tish sababi (pastga q.)
+  const hasRoomPermission = (room, ev) =>
+    room.teachers.has(ev.teacherId)
+    || ev.groupIds.some((gid) => room.groups.has(gid))
+    || ev.specialtyIds.some((sid) => room.specialties.has(sid))
+    || room.subjects.has(ev.subjectId)
+
   // Event uchun xona mosligi: sig'im yetarli VA kirish ruxsati bor
   const roomAllowed = (room, ev) => {
     if (room.capacity < ev.groupSize) return false // qattiq cheklash 5
@@ -113,18 +121,16 @@ export async function loadData(prisma, semester = 1, opts = {}) {
     // Fakultet bino egaligi — "asosiy" bino (facultyId=null) hammaga ochiq, boshqa
     // fakultetning binosiga aralashmaydi (qattiq cheklash — bino qaysi fakultetniki
     // bo'lsa, faqat o'sha fakultet guruhlari shu bino xonalaridan foydalanadi).
-    // ISTISNO: xonaga shu FANGA maxsus ruxsat berilgan bo'lsa (masalan jismoniy
-    // tarbiya — sport zali, fizik joylashuvi biror fakultet binosida bo'lsa ham),
-    // bino-fakultet egaligi chetlab o'tiladi — bunday xona ATAYLAB butun universitet
-    // uchun umumiy fan xizmatini ko'rsatadi, qaysi binoda joylashganidan qat'i nazar.
-    if (room.facultyId != null && !ev.facultyIds.includes(room.facultyId) && !room.subjects.has(ev.subjectId)) return false
+    // ISTISNO: xonaga aniq ruxsat (o'qituvchi/guruh/yo'nalish/fan) berilgan bo'lsa —
+    // masalan boshqa fakultetning binosidagi xonani biror guruhga maxsus biriktirilsa
+    // (xona sig'imi yetarli bo'lib, o'z binosi yetishmayotgan fakultetlar uchun) —
+    // bino-fakultet egaligi chetlab o'tiladi. Bu ATAYLAB shunday: aniq ruxsat umumiy
+    // qoidadan ustun turadi, qaysi binoda joylashganidan qat'i nazar.
+    if (room.facultyId != null && !ev.facultyIds.includes(room.facultyId) && !hasRoomPermission(room, ev)) return false
     if (room.type === 'umumiy') return true // hamma foydalanishi mumkin
     // maxsus: o'qituvchi / guruh(lar) / yo'nalish(lar) / FAN ruxsati (qattiq cheklash 6,7) —
     // potokda tanlangan guruhlardan BIRIGA (yoki darsning fani) ruxsat bo'lsa yetarli
-    return room.teachers.has(ev.teacherId)
-      || ev.groupIds.some((gid) => room.groups.has(gid))
-      || ev.specialtyIds.some((sid) => room.specialties.has(sid))
-      || room.subjects.has(ev.subjectId)
+    return hasRoomPermission(room, ev)
   }
 
   // O'qituvchi istisnolariga mos ravishda ruxsat etilgan slotlarni toraytiradi

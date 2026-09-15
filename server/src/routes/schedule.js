@@ -344,18 +344,18 @@ async function roomEligibility({ roomId, groupId, teacherId, type, subjectId }) 
     }
   }
   const bFac = room.building?.facultyId ?? null
-  // ISTISNO: xonaga shu FANGA maxsus ruxsat berilgan bo'lsa (masalan jismoniy tarbiya —
-  // sport zali) — bino-fakultet egaligi chetlab o'tiladi (loadData.js bilan bir xil)
-  const subjectExempt = subjectId != null && room.permissions.some((p) => p.subjectId === subjectId)
-  if (bFac != null && group.facultyId != null && bFac !== group.facultyId && !subjectExempt) {
+  // ISTISNO: xonaga aniq ruxsat (o'qituvchi/guruh/yo'nalish/fan) berilgan bo'lsa —
+  // bino-fakultet egaligi chetlab o'tiladi (loadData.js bilan bir xil — masalan boshqa
+  // fakultetning binosidagi xona o'z binosi yetishmayotgan fakultetga biriktirilishi mumkin)
+  const hasPermission = room.permissions.some((p) =>
+    p.teacherId === teacherId || p.groupId === groupId
+    || (group.specialtyId != null && p.specialtyId === group.specialtyId)
+    || (subjectId != null && p.subjectId === subjectId))
+  if (bFac != null && group.facultyId != null && bFac !== group.facultyId && !hasPermission) {
     return `"${room.name}" boshqa fakultet binosida — bu guruh u yerdan foydalana olmaydi`
   }
   if (room.type === 'maxsus') {
-    const ok = room.permissions.some((p) =>
-      p.teacherId === teacherId || p.groupId === groupId
-      || (group.specialtyId != null && p.specialtyId === group.specialtyId)
-      || (subjectId != null && p.subjectId === subjectId))
-    if (!ok) return `"${room.name}" — maxsus xona, bu guruh/o'qituvchi/yo'nalish/fanga kirish ruxsati berilmagan`
+    if (!hasPermission) return `"${room.name}" — maxsus xona, bu guruh/o'qituvchi/yo'nalish/fanga kirish ruxsati berilmagan`
   }
   // QAT'IY biriktirish: bu guruh faqat exclusive xonalarida dars o'tishi mumkin
   const exPerms = await prisma.roomPermission.findMany({ where: { groupId, exclusive: true }, include: { room: true } })
