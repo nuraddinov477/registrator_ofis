@@ -5,6 +5,7 @@ import { asyncHandler } from '../lib/asyncHandler.js'
 import { verifyPassword } from '../auth/password.js'
 import { signToken } from '../auth/jwt.js'
 import { requireAuth } from '../auth/middleware.js'
+import { isMaintenanceOn } from './siteSettings.js'
 
 export const authRouter = Router()
 
@@ -16,6 +17,11 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   const user = await prisma.user.findUnique({ where: { login } })
   if (!user || !user.active || !(await verifyPassword(password, user.passwordHash))) {
     return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' })
+  }
+  // Texnik xizmat rejimida FAQAT "developer" kira oladi — Super Admin'lar ham emas
+  // (maintenanceGate.js bilan bir xil qoida, shu yerda LOGIN bosqichida tekshiriladi).
+  if (login !== 'developer' && await isMaintenanceOn()) {
+    return res.status(503).json({ error: "Sayt hozir texnik xizmat ko'rsatish tufayli vaqtincha yopiq", maintenance: true })
   }
   await audit('Tizimga kirdi', login, req)
   res.json({

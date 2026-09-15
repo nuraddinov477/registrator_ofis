@@ -4,7 +4,7 @@ import { ShieldAlert } from 'lucide-react'
 import Layout from './layout/Layout'
 import Login from './auth/Login'
 import { auth, api } from './api/client'
-import { canSeeRoute, roleOf, ROLES } from './lib/access'
+import { canSeeRoute } from './lib/access'
 
 // Har sahifa alohida "chunk" sifatida — faqat o'sha sahifaga o'tilganda yuklanadi
 // (bitta katta bundle o'rniga). resources.jsx/Misc.jsx bir nechta sahifani eksport
@@ -34,13 +34,14 @@ const PageLoading = () => (
   <div className="flex min-h-[50vh] items-center justify-center text-sm text-slate-400">Yuklanmoqda…</div>
 )
 
-// Texnik xizmat rejimi yoqilsa (Dashboard'dagi Super Admin boshqaruvi orqali) — Super
-// Admin'dan boshqa hamma uchun to'liq ekranli xabar (backend baribir bloklaydi, bu
-// shunchaki qulay ko'rinish). Har 20 soniyada tekshiriladi — yoqilsa/o'chirilsa tez ko'rinsin.
+// Texnik xizmat rejimi yoqilsa (Dashboard'dagi developer boshqaruvi orqali) —
+// "developer"dan boshqa HAMMA (Super Admin'lar ham) uchun to'liq ekranli xabar
+// (backend baribir bloklaydi, bu shunchaki qulay ko'rinish). Har 20 soniyada
+// tekshiriladi — yoqilsa/o'chirilsa tez ko'rinsin.
 function useMaintenanceLock() {
   const [state, setState] = useState(null)
   useEffect(() => {
-    if (roleOf() === ROLES.SUPER) return
+    if (auth.user()?.login === 'developer') return
     let alive = true
     const check = () => api('/site-settings').then((s) => { if (alive) setState(s) }).catch(() => {})
     check()
