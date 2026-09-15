@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { asyncHandler } from '../lib/asyncHandler.js'
 import { prisma, audit } from '../db.js'
-import { requireRole } from '../auth/middleware.js'
+import { requireDeveloper } from '../auth/middleware.js'
 
 export const siteSettingsRouter = Router()
 
@@ -30,9 +30,9 @@ siteSettingsRouter.get('/', asyncHandler(async (req, res) => {
   res.json({ maintenanceMode: s.maintenanceMode, message: s.message })
 }))
 
-// PUT — FAQAT Super Admin yoqadi/o'chiradi. Oshkora: Audit jurnaliga yoziladi,
-// har qanday Super Admin hisobi buni ko'radi va boshqaradi (yashirin emas).
-siteSettingsRouter.put('/', requireRole('Super Admin'), asyncHandler(async (req, res) => {
+// PUT — FAQAT developer hisobi yoqadi/o'chiradi. Oshkora: Audit jurnaliga yoziladi
+// (yashirin emas) — shunchaki boshqa Super Admin hisoblari bu amalni bajara olmaydi.
+siteSettingsRouter.put('/', requireDeveloper, asyncHandler(async (req, res) => {
   const maintenanceMode = !!req.body?.maintenanceMode
   const message = req.body?.message ? String(req.body.message).slice(0, 500) : null
   const row = await prisma.siteSetting.upsert({

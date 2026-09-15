@@ -8,12 +8,14 @@ import {
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
 import { useCollection } from '../data/store'
-import { api } from '../api/client'
-import { roleOf, ROLES } from '../lib/access'
+import { api, auth } from '../api/client'
 
-// Texnik xizmat rejimi — FAQAT Super Admin ko'radi/boshqaradi. Yoqilsa, boshqa
-// hech kim saytdan foydalana olmaydi (backend: maintenanceGate). To'liq OSHKORA —
-// istalgan Super Admin hisobi bu yerdan boshqaradi, har o'zgarish Audit jurnaliga yoziladi.
+const isDeveloper = () => auth.user()?.login === 'developer'
+
+// Texnik xizmat rejimi + barcha akkauntlarni bloklash — FAQAT "developer" login bilan
+// kirilganda ko'rinadi (boshqa Super Admin hisoblariga, jumladan superadmin/admin'ga
+// ham ko'rinmaydi — backend ham requireDeveloper bilan qat'iy tekshiradi, bu shunchaki
+// mos UI). To'liq OSHKORA: yashirin emas, har amal Audit jurnaliga yoziladi.
 function MaintenanceToggle() {
   const [state, setState] = useState(null)
   const [msg, setMsg] = useState('')
@@ -31,26 +33,58 @@ function MaintenanceToggle() {
     } catch (e) { alert(e.message || 'Xatolik yuz berdi') } finally { setBusy(false) }
   }
 
+  const blockAll = async () => {
+    if (!confirm("Developer'dan boshqa BARCHA akkaunt bloklanadi (hammasi darhol tizimdan chiqariladi). Davom etasizmi?")) return
+    setBusy(true)
+    try {
+      const r = await api('/users/block-all', { method: 'POST' })
+      alert(`${r.blocked} ta akkaunt bloklandi.`)
+    } catch (e) { alert(e.message || 'Xatolik yuz berdi') } finally { setBusy(false) }
+  }
+
+  const unblockAll = async () => {
+    setBusy(true)
+    try {
+      const r = await api('/users/unblock-all', { method: 'POST' })
+      alert(`${r.unblocked} ta akkaunt blokdan chiqarildi.`)
+    } catch (e) { alert(e.message || 'Xatolik yuz berdi') } finally { setBusy(false) }
+  }
+
   if (!state) return null
   return (
-    <div className={`card mb-6 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between ${state.maintenanceMode ? 'border-red-500/40 bg-red-500/5' : ''}`}>
-      <div className="flex items-start gap-3">
-        <ShieldAlert size={20} className={state.maintenanceMode ? 'text-red-500' : 'text-slate-400'} />
-        <div>
-          <p className="font-semibold text-slate-800 dark:text-slate-200">
-            Texnik xizmat rejimi{state.maintenanceMode
-              ? <span className="ml-1.5 text-red-500">— YOQILGAN, sayt yopiq</span>
-              : <span className="ml-1.5 text-emerald-500">— o'chirilgan</span>}
-          </p>
-          <p className="text-xs text-slate-400">Yoqilsa, Super Admin'dan boshqa hech kim saytdan foydalana olmaydi. Bu — oshkora funksiya, Audit jurnaliga yoziladi.</p>
+    <div className={`card mb-6 space-y-4 p-4 ${state.maintenanceMode ? 'border-red-500/40 bg-red-500/5' : ''}`}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <ShieldAlert size={20} className={state.maintenanceMode ? 'text-red-500' : 'text-slate-400'} />
+          <div>
+            <p className="font-semibold text-slate-800 dark:text-slate-200">
+              Texnik xizmat rejimi{state.maintenanceMode
+                ? <span className="ml-1.5 text-red-500">— YOQILGAN, sayt yopiq</span>
+                : <span className="ml-1.5 text-emerald-500">— o'chirilgan</span>}
+            </p>
+            <p className="text-xs text-slate-400">Faqat siz (developer) ko'rasiz va boshqarasiz. Yoqilsa, boshqa hech kim (Super Admin'lar ham) saytdan foydalana olmaydi.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input className="input w-56" placeholder="Xabar (ixtiyoriy)…" value={msg} onChange={(e) => setMsg(e.target.value)} />
+          <button onClick={toggle} disabled={busy}
+            className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50 ${state.maintenanceMode ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`}>
+            {state.maintenanceMode ? 'Qayta ochish' : 'Saytni yopish'}
+          </button>
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <input className="input w-56" placeholder="Xabar (ixtiyoriy)…" value={msg} onChange={(e) => setMsg(e.target.value)} />
-        <button onClick={toggle} disabled={busy}
-          className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50 ${state.maintenanceMode ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`}>
-          {state.maintenanceMode ? 'Qayta ochish' : 'Saytni yopish'}
-        </button>
+      <div className="flex flex-col gap-2 border-t border-slate-200 pt-3 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-slate-400">Har bir akkauntni alohida bloklash "Foydalanuvchilar" bo'limida — bu esa hammasini bittada bajaradi.</p>
+        <div className="flex items-center gap-2">
+          <button onClick={unblockAll} disabled={busy}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+            Hammasini blokdan chiqarish
+          </button>
+          <button onClick={blockAll} disabled={busy}
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50">
+            Hammasini bloklash
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -161,7 +195,7 @@ export default function Dashboard() {
         <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Universitet boʻyicha umumiy statistika</p>
       </div>
 
-      {roleOf() === ROLES.SUPER && <MaintenanceToggle />}
+      {isDeveloper() && <MaintenanceToggle />}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {cards.map((c) => <Card key={c.label} {...c} />)}

@@ -19,3 +19,13 @@ export const requireRole = (...roles) => (req, res, next) => {
   if (!roles.includes(req.user.role)) return res.status(403).json({ error: 'Ruxsat yetarli emas' })
   next()
 }
+
+// Faqat "developer" hisobi (login bo'yicha) — saytni bloklash, barcha akkauntlarni
+// bir vaqtda bloklash/blokdan chiqarish va boshqa Super Admin hisoblarini boshqarish
+// kabi eng yuqori darajadagi amallar uchun. OSHKORA: bu shunchaki qo'shimcha huquq
+// darajasi (har qanday requireRole tekshiruvi kabi) — yashirin emas, Audit'ga yoziladi.
+export const requireDeveloper = (req, res, next) => {
+  if (!req.user) return res.status(401).json({ error: 'Avtorizatsiya talab qilinadi' })
+  if (req.user.login !== 'developer') return res.status(403).json({ error: 'Bu amal faqat developer hisobi uchun' })
+  next()
+}

@@ -8,8 +8,9 @@ import { requestsRouter } from './requests.js'
 import { handoverRouter } from './handover.js'
 import { assistantRouter } from './assistant.js'
 import { workloadsRouter } from './workloads.js'
-import { requireRole } from '../auth/middleware.js'
-import { requireWrite, requireRead, scopeWhere as accessScopeWhere, scopeAssert as accessScopeAssert } from '../auth/access.js'
+import { usersBulkRouter } from './usersBulk.js'
+import { requireRole, requireDeveloper } from '../auth/middleware.js'
+import { requireWrite, requireRead, scopeWhere as accessScopeWhere, scopeAssert as accessScopeAssert, protectSuperAdminTarget } from '../auth/access.js'
 import { hashPassword } from '../auth/password.js'
 
 const stripPassword = (u) => { const { passwordHash, ...rest } = u; return rest }
@@ -35,8 +36,9 @@ const resources = [
   { path: 'room-permissions', model: 'roomPermission', label: 'Xona ruxsati', schema: schemas.roomPermission, include: { room: true, teacher: true, group: true, specialty: true, subject: true } },
   { path: 'teacher-constraints', model: 'teacherConstraint', label: "O'qituvchi istisnosi", schema: schemas.teacherConstraint, include: { teacher: true } },
   // 'workloads' — bu yerda EMAS: guruh ko'p-ko'pga (potok), o'z marshruti bor (pastda)
-  // Foydalanuvchilar: faqat Super Admin ko'radi va o'zgartiradi, parol hech qachon qaytarilmaydi
-  { path: 'users', model: 'user', label: 'Foydalanuvchi', schema: schemas.user, sanitize: stripPassword, transform: userTransform },
+  // Foydalanuvchilar: faqat Super Admin ko'radi va o'zgartiradi, parol hech qachon qaytarilmaydi.
+  // extraWriteGuard: boshqa Super Admin hisobini (o'chirish/blоklash) faqat developer qila oladi.
+  { path: 'users', model: 'user', label: 'Foydalanuvchi', schema: schemas.user, sanitize: stripPassword, transform: userTransform, extraWriteGuard: [protectSuperAdminTarget()] },
 ]
 
 export function buildRoutes() {
@@ -45,6 +47,8 @@ export function buildRoutes() {
   // Almashtirish ustasi (dekret/ta'til) — /teachers/:id/handover-plan va /handover.
   // CRUD marshrutlaridan oldin: yo'llar 2 segmentli, to'qnashuv yo'q.
   router.use('/teachers', handoverRouter())
+  // /users/block-all va /users/unblock-all — generic CRUD'dan OLDIN (developer-only)
+  router.use('/users', usersBulkRouter())
 
   for (const r of resources) {
     router.use(
@@ -55,7 +59,7 @@ export function buildRoutes() {
         include: r.include, sanitize: r.sanitize, transform: r.transform,
         // Rol-huquq: o'qish/yozish ruxsati + har rol faqat o'z birligi ma'lumotini ko'radi
         readGuard: [requireRead(r.path)],
-        writeGuard: [requireWrite(r.path)],
+        writeGuard: [requireWrite(r.path), ...(r.extraWriteGuard || [])],
         scopeWhere: (user) => accessScopeWhere(r.path, user),
         scopeAssert: (user, data, existing) => accessScopeAssert(r.path, user, data, existing),
       }),

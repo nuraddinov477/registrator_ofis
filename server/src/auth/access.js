@@ -91,6 +91,19 @@ export const requireWrite = (resource) => (req, res, next) => {
   res.status(403).json({ error: 'Ruxsat yetarli emas' })
 }
 
+// ── Middleware: boshqa Super Admin hisobini o'chirishdan himoya (PUT scopeAssertUsers
+// orqali tahrirlashni allaqachon bloklaydi — bu DELETE uchun xuddi shu qoida) ──
+export const protectSuperAdminTarget = () => async (req, res, next) => {
+  if (!isSuperAdmin(req.user) || req.user.login === 'developer') return next()
+  const id = Number(req.params.id)
+  if (!id) return next()
+  const target = await prisma.user.findUnique({ where: { id } })
+  if (target?.role === SUPER && target.id !== req.user.sub) {
+    return res.status(403).json({ error: 'Boshqa Super Admin hisobini faqat developer boshqaradi' })
+  }
+  next()
+}
+
 // ── Middleware: o'qish ruxsati (maxfiy resurs + shaxsiy "yashirish" cheklovi) ──
 export const requireRead = (resource) => (req, res, next) => {
   if (!req.user) return res.status(401).json({ error: 'Avtorizatsiya talab qilinadi' })
@@ -155,6 +168,12 @@ async function scopeAssertUsers(user, data, existing) {
   }
 
   if (isSuperAdmin(user)) {
+    // Boshqa Super Admin hisobini FAQAT developer o'zgartira/bloklay oladi — bitta
+    // Super Admin ikkinchisini (jumladan o'zini bloklashga urinishini) to'xtatib
+    // qo'ya olmasligi uchun. O'zini tahrirlash (masalan parol yangilash) istisno.
+    if (existing?.role === SUPER && existing.id !== user.sub && user.login !== 'developer') {
+      throw new AccessError('Boshqa Super Admin hisobini faqat developer boshqaradi')
+    }
     // Super Admin: cheklov qo'yadi; ko'rinish uchun facultyId derivatsiyasi (agar berilmagan)
     if (data && data.facultyId == null) {
       const fac = await deriveFacultyId(data, existing)
