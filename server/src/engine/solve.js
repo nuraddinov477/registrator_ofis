@@ -33,6 +33,22 @@ export function buildDiagnostics(ctx) {
     }
   }
 
+  // 1.5) Guruh HAFTALIK dars soni sog'lom me'yordan (14-15) tashqarida — bu SLOT
+  // sig'imidan (groupOverload, yuqorida) farqli: bu ABSOLYUT me'yor, jadval yaratishga
+  // to'sqinlik qilmaydi, faqat OGOHLANTIRADI (ma'lumot — Yuklama — noto'g'ri kiritilgan
+  // bo'lishi mumkin: juda ko'p yoki juda kam fan/soat biriktirilgan).
+  const MIN_WEEKLY_LESSONS = 14, MAX_WEEKLY_LESSONS = 15
+  const loadWarnings = []
+  for (const [gid, evs] of ctx.byGroup) {
+    const needed = evs.length
+    if (needed > MAX_WEEKLY_LESSONS || needed < MIN_WEEKLY_LESSONS) {
+      loadWarnings.push({
+        group: gName.get(gid) ?? `#${gid}`, course: gCourse.get(gid) ?? 1, needed,
+        kind: needed > MAX_WEEKLY_LESSONS ? 'kop' : 'kam',
+      })
+    }
+  }
+
   // 2) O'qituvchi yuklamasi mavjud bo'sh vaqtdan oshgan
   const teacherOverload = []
   for (const [, evs] of ctx.byTeacher) {
@@ -70,7 +86,7 @@ export function buildDiagnostics(ctx) {
     for (const v of un.values()) unresolved.push(v)
   }
 
-  return { groupOverload, teacherOverload, blocked, unresolved }
+  return { groupOverload, teacherOverload, blocked, unresolved, loadWarnings }
 }
 
 // Mustaqil tekshiruv — occupancy'ga ishonmasdan, noldan qattiq cheklovlarni sanaydi.

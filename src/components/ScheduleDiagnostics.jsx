@@ -4,8 +4,8 @@ import { AlertTriangle, CheckCircle2, XCircle, Clock, DoorClosed } from 'lucide-
 // har bir muammoni ANIQ manzili (qaysi guruh/o'qituvchi/dars) va sababi bilan ko'rsatadi.
 export default function ScheduleDiagnostics({ diagnostics, dense = false }) {
   if (!diagnostics) return null
-  const { groupOverload = [], teacherOverload = [], blocked = [], unresolved = [] } = diagnostics
-  const total = groupOverload.length + teacherOverload.length + blocked.length + unresolved.length
+  const { groupOverload = [], teacherOverload = [], blocked = [], unresolved = [], loadWarnings = [] } = diagnostics
+  const total = groupOverload.length + teacherOverload.length + blocked.length + unresolved.length + loadWarnings.length
 
   if (total === 0) {
     return (
@@ -24,6 +24,19 @@ export default function ScheduleDiagnostics({ diagnostics, dense = false }) {
 
   return (
     <div className={`space-y-2 ${dense ? '' : 'mb-4'}`}>
+      {loadWarnings.length > 0 && (
+        <Section icon={AlertTriangle} title={`Guruh haftalik yuklamasi me'yordan tashqarida (${loadWarnings.length})`}
+          color="border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-300">
+          {loadWarnings.map((w, i) => (
+            <li key={i}>
+              <b>{w.group}</b> ({w.course}-kurs): haftada <b>{w.needed}</b> ta dars —
+              {' '}{w.kind === 'kop' ? <>me'yordan (14-15) <b>ko'p</b> ({w.needed - 15} ta ortiqcha)</> : <>me'yordan (14-15) <b>kam</b> ({14 - w.needed} ta yetishmaydi)</>}.
+              {' '}<span className="opacity-80">— Yuklama ro'yxatini tekshiring.</span>
+            </li>
+          ))}
+        </Section>
+      )}
+
       {groupOverload.length > 0 && (
         <Section icon={AlertTriangle} title={`Guruh yuklamasi oshib ketgan (${groupOverload.length})`}
           color="border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-300">
