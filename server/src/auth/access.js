@@ -54,10 +54,17 @@ export function assignableRoles(user) {
   return []
 }
 
-// Super Admin qo'ygan shaxsiy cheklovlarni o'qiydi (Super Admin hech qachon cheklanmaydi)
+// "developer" hisobi hech qachon cheklanmaydi (login bo'yicha, rol emas — shu sabab
+// developer boshqa Super Admin hisoblariga cheklov qo'ya oladi, lekin ular developer'ga
+// qo'ya olmaydi va o'zlariga qo'yilgan cheklovdan qochib qutula olmaydi).
+const isUnrestrictable = (user) => user?.login === 'developer'
+
+// Developer qo'ygan shaxsiy cheklovlarni o'qiydi. Oldin Super Admin har doim cheklovdan
+// mustasno edi — endi FAQAT developer mustasno, shu bilan developer boshqa Super Admin
+// hisoblarini ham (superadmin, admin va h.k.) cheklashi mumkin.
 export function parseRestrictions(user) {
   const empty = { readOnly: false, denyWrite: [], denyRead: [] }
-  if (isSuperAdmin(user) || !user?.restrictions) return empty
+  if (isUnrestrictable(user) || !user?.restrictions) return empty
   try {
     const r = typeof user.restrictions === 'string' ? JSON.parse(user.restrictions) : user.restrictions
     return {
@@ -70,15 +77,20 @@ export function parseRestrictions(user) {
 
 // Shaxsiy cheklov shu bo'limda amalni bloklaydimi? (requests/schedule kabi maxsus marshrutlar uchun)
 export function restrictionBlocks(user, section, kind = 'write') {
-  if (isSuperAdmin(user)) return false
+  if (isUnrestrictable(user)) return false
   const r = parseRestrictions(user)
   if (kind === 'write') return r.readOnly || r.denyWrite.includes(section)
   return r.denyRead.includes(section)
 }
 
-// Bu rol resursni yoza oladimi? (rol ruxsati + shaxsiy cheklov)
+// Bu rol resursni yoza oladimi? (rol ruxsati + shaxsiy cheklov). Super Admin bazaviy
+// holatda hammaga yoza oladi, lekin developer qo'ygan shaxsiy cheklov unga ham qo'llanadi.
 export function canWrite(resource, user) {
-  if (isSuperAdmin(user)) return true
+  if (isUnrestrictable(user)) return true
+  if (isSuperAdmin(user)) {
+    const r = parseRestrictions(user)
+    return !r.readOnly && !r.denyWrite.includes(sectionOf(resource))
+  }
   if (!(WRITE[resource] ?? []).includes(user?.role)) return false
   const r = parseRestrictions(user)
   return !r.readOnly && !r.denyWrite.includes(sectionOf(resource))

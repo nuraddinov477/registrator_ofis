@@ -383,6 +383,7 @@ export function UsersPage() {
 
   const me = auth.user()
   const isSuper = me?.role === 'Super Admin'
+  const isDeveloper = me?.login === 'developer'
   const assignable = assignableRoles(me)
   // Birlik tanlovlari — yaratuvchi doirasiga cheklangan
   const deptOptions = isSuper ? departments : departments.filter((d) => d.facultyId === me?.facultyId)
@@ -464,8 +465,11 @@ export function UsersPage() {
           </Field>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} /> Faol</label>
 
-          {/* Shaxsiy cheklovlar — faqat Super Admin, Super Admin bo'lmagan userlar uchun */}
-          {isSuper && form.role && form.role !== 'Super Admin' && (
+          {/* Shaxsiy cheklovlar — Super Admin, Super Admin bo'lmagan userlar uchun; Super
+              Admin nishonlarga esa FAQAT developer (boshqa Super Admin hisoblarini ham
+              cheklay olishi uchun — developer'ning o'ziga esa hech qachon qo'llanilmaydi) */}
+          {((isSuper && form.role && form.role !== 'Super Admin')
+            || (isDeveloper && form.role === 'Super Admin' && form.login !== 'developer')) && (
             <div className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
               <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">Cheklovlar (ixtiyoriy)</div>
               <label className="flex items-center gap-2 text-sm">

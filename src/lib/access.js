@@ -95,8 +95,12 @@ export function assignableRoles(user) {
   return []
 }
 
-// Shu rol yoza oladigan bo'limlar (cheklov "yozishni taqiqlash" checkboxlari uchun)
+// Shu rol yoza oladigan bo'limlar (cheklov "yozishni taqiqlash" checkboxlari uchun).
+// Super Admin bazaviy holatda HAMMA bo'limga yoza oladi (WRITE ro'yxatida alohida
+// sanalmagan — u faqat boshqa rollarga qo'shimcha ruxsat beradi) — shu sabab developer
+// bir Super Admin hisobini cheklamoqchi bo'lsa, ro'yxat to'liq bo'lishi kerak.
 export function writableSections(role) {
+  if (role === SUPER) return [...new Set([...Object.keys(WRITE).map(sectionOf), 'requests', 'schedule'])]
   const out = []
   for (const [res, roles] of Object.entries(WRITE)) if (roles.includes(role)) out.push(sectionOf(res))
   if (role === OPERATOR || role === MUDIR) out.push('requests')
