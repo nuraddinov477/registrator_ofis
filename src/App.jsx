@@ -1,9 +1,10 @@
-import { lazy, Suspense, useSyncExternalStore } from 'react'
+import { lazy, Suspense, useSyncExternalStore, useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { ShieldAlert } from 'lucide-react'
 import Layout from './layout/Layout'
 import Login from './auth/Login'
-import { auth } from './api/client'
-import { canSeeRoute } from './lib/access'
+import { auth, api } from './api/client'
+import { canSeeRoute, roleOf, ROLES } from './lib/access'
 
 // Har sahifa alohida "chunk" sifatida — faqat o'sha sahifaga o'tilganda yuklanadi
 // (bitta katta bundle o'rniga). resources.jsx/Misc.jsx bir nechta sahifani eksport
@@ -33,9 +34,39 @@ const PageLoading = () => (
   <div className="flex min-h-[50vh] items-center justify-center text-sm text-slate-400">Yuklanmoqda…</div>
 )
 
+// Texnik xizmat rejimi yoqilsa (Dashboard'dagi Super Admin boshqaruvi orqali) — Super
+// Admin'dan boshqa hamma uchun to'liq ekranli xabar (backend baribir bloklaydi, bu
+// shunchaki qulay ko'rinish). Har 20 soniyada tekshiriladi — yoqilsa/o'chirilsa tez ko'rinsin.
+function useMaintenanceLock() {
+  const [state, setState] = useState(null)
+  useEffect(() => {
+    if (roleOf() === ROLES.SUPER) return
+    let alive = true
+    const check = () => api('/site-settings').then((s) => { if (alive) setState(s) }).catch(() => {})
+    check()
+    const id = setInterval(check, 20000)
+    return () => { alive = false; clearInterval(id) }
+  }, [])
+  return state?.maintenanceMode ? state : null
+}
+
+function MaintenanceLock({ message }) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 px-6 text-center dark:bg-slate-950">
+      <ShieldAlert size={40} className="text-amber-500" />
+      <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Sayt vaqtincha yopiq</h1>
+      <p className="max-w-md text-sm text-slate-500 dark:text-slate-400">
+        {message || "Sayt hozir texnik xizmat ko'rsatish tufayli vaqtincha ishlamaydi. Iltimos, keyinroq qayta urinib ko'ring."}
+      </p>
+    </div>
+  )
+}
+
 export default function App() {
   const authed = useAuthed()
+  const maintenance = useMaintenanceLock()
   if (!authed) return <Login />
+  if (maintenance) return <MaintenanceLock message={maintenance.message} />
 
   return (
     <Suspense fallback={<PageLoading />}>

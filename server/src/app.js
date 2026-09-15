@@ -8,8 +8,10 @@ import { config } from './config.js'
 import { prisma } from './db.js'
 import { buildRoutes } from './routes/index.js'
 import { authRouter } from './routes/auth.js'
+import { siteSettingsRouter } from './routes/siteSettings.js'
 import { requireAuth } from './auth/middleware.js'
 import { loadPerms } from './auth/loadPerms.js'
+import { maintenanceGate } from './middleware/maintenance.js'
 import { notFound, errorHandler } from './middleware/error.js'
 
 export function createApp() {
@@ -39,8 +41,12 @@ export function createApp() {
   const authLimiter = rateLimit({ windowMs: config.rateLimit.windowMs, max: config.rateLimit.authMax, standardHeaders: true, legacyHeaders: false })
   app.use('/api/auth', authLimiter, authRouter)
 
-  // Qolgan barcha /api — autentifikatsiya + har so'rovda yangilangan huquq/cheklov
-  app.use('/api', requireAuth, loadPerms, buildRoutes())
+  // Qolgan barcha /api — autentifikatsiya + har so'rovda yangilangan huquq/cheklov.
+  // site-settings — maintenanceGate'dan OLDIN (texnik xizmat holatini har doim,
+  // hatto yopiq paytda ham, istalgan avtorizatsiyalangan foydalanuvchi o'qiy oladi).
+  app.use('/api', requireAuth, loadPerms)
+  app.use('/api/site-settings', siteSettingsRouter)
+  app.use('/api', maintenanceGate, buildRoutes())
 
   app.use(notFound)
   app.use(errorHandler)

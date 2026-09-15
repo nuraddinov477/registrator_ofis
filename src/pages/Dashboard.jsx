@@ -1,12 +1,60 @@
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Building2, Landmark, Users, Library, GraduationCap, Home, CalendarDays, ArrowUpRight,
+  Building2, Landmark, Users, Library, GraduationCap, Home, CalendarDays, ArrowUpRight, ShieldAlert,
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
 import { useCollection } from '../data/store'
+import { api } from '../api/client'
+import { roleOf, ROLES } from '../lib/access'
+
+// Texnik xizmat rejimi — FAQAT Super Admin ko'radi/boshqaradi. Yoqilsa, boshqa
+// hech kim saytdan foydalana olmaydi (backend: maintenanceGate). To'liq OSHKORA —
+// istalgan Super Admin hisobi bu yerdan boshqaradi, har o'zgarish Audit jurnaliga yoziladi.
+function MaintenanceToggle() {
+  const [state, setState] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    api('/site-settings').then((s) => { setState(s); setMsg(s.message || '') }).catch(() => {})
+  }, [])
+
+  const toggle = async () => {
+    setBusy(true)
+    try {
+      const s = await api('/site-settings', { method: 'PUT', body: { maintenanceMode: !state.maintenanceMode, message: msg } })
+      setState(s)
+    } catch (e) { alert(e.message || 'Xatolik yuz berdi') } finally { setBusy(false) }
+  }
+
+  if (!state) return null
+  return (
+    <div className={`card mb-6 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between ${state.maintenanceMode ? 'border-red-500/40 bg-red-500/5' : ''}`}>
+      <div className="flex items-start gap-3">
+        <ShieldAlert size={20} className={state.maintenanceMode ? 'text-red-500' : 'text-slate-400'} />
+        <div>
+          <p className="font-semibold text-slate-800 dark:text-slate-200">
+            Texnik xizmat rejimi{state.maintenanceMode
+              ? <span className="ml-1.5 text-red-500">— YOQILGAN, sayt yopiq</span>
+              : <span className="ml-1.5 text-emerald-500">— o'chirilgan</span>}
+          </p>
+          <p className="text-xs text-slate-400">Yoqilsa, Super Admin'dan boshqa hech kim saytdan foydalana olmaydi. Bu — oshkora funksiya, Audit jurnaliga yoziladi.</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <input className="input w-56" placeholder="Xabar (ixtiyoriy)…" value={msg} onChange={(e) => setMsg(e.target.value)} />
+        <button onClick={toggle} disabled={busy}
+          className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-50 ${state.maintenanceMode ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`}>
+          {state.maintenanceMode ? 'Qayta ochish' : 'Saytni yopish'}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 const stat = (label, value, icon, color, to) => ({ label, value, icon, color, to })
 
@@ -112,6 +160,8 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Dashboard</h1>
         <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Universitet boʻyicha umumiy statistika</p>
       </div>
+
+      {roleOf() === ROLES.SUPER && <MaintenanceToggle />}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {cards.map((c) => <Card key={c.label} {...c} />)}

@@ -184,6 +184,17 @@ model TeacherConstraint {
   updatedAt    DateTime @updatedAt
 }
 
+// Sayt darajasidagi sozlama — yagona qator (id=1). Texnik xizmat rejimi: yoqilsa,
+// Super Admin'dan boshqa hech kim saytdan (API'dan) foydalana olmaydi — bu OSHKORA
+// funksiya, istalgan Super Admin hisobi boshqara oladi va Audit jurnaliga yoziladi
+// (yashirin/maxfiy emas — server/src/routes/siteSettings.js).
+model SiteSetting {
+  id                 Int      @id @default(1)
+  maintenanceMode    Boolean  @default(false)
+  maintenanceMessage String?
+  updatedAt          DateTime @updatedAt
+}
+
 // ─────────────────────────── Ish yuklamasi (engine kirishi) ───────────────────────────
 
 model Workload {
