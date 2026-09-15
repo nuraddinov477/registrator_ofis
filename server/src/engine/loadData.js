@@ -4,9 +4,11 @@ import { allowedSlots, dayOf, pairOf, PAIRS } from './timeslots.js'
 // ortiq) talabali guruh/potokka ajratiladi — kichik guruhlar band qilmaydi.
 export const LARGE_ROOM_CAPACITY = 60
 // Asosiy (fakultetsiz) binodagi katta zallar ("Katta zal 1-7" va h.k.) uchun QAT'IY
-// diapazon — Ma'ruzada faqat shu oraliqdagi potok o'lchami ruxsat etiladi.
-export const MAIN_HALL_MIN = 70
-export const MAIN_HALL_MAX = 100
+// diapazon (dars turidan qat'i nazar) — asosiy 70-100 talabali potok, ± 5 talaba
+// tolerantlik bilan (ya'ni 65-105) — chegaraga yaqin guruhlar butunlay joysiz qolib
+// ketmasligi uchun.
+export const MAIN_HALL_MIN = 65
+export const MAIN_HALL_MAX = 105
 
 // DB'dan ma'lumotni o'qib, optimallashtirish konteksti (events + nomzod xonalar) tuzadi.
 //
@@ -106,13 +108,14 @@ export async function loadData(prisma, semester = 1, opts = {}) {
     if (room.capacity > LARGE_ROOM_CAPACITY) {
       if (room.facultyId == null) {
         // Asosiy (fakultetsiz) binodagi katta zal ("Katta zal 1-7" va h.k.) — QAT'IY,
-        // TUR (Ma'ruza/Amaliy/Seminar)DAN QAT'I NAZAR: faqat 70-100 talabali potok.
+        // TUR (Ma'ruza/Amaliy/Seminar)DAN QAT'I NAZAR: faqat MAIN_HALL_MIN-MAIN_HALL_MAX
+        // (65-105, ya'ni 70-100 ± 5 tolerantlik) talabali potok.
         // Boshqa hech narsa — Amaliy/Seminar ham — "oxirgi chora" sifatida bu yerga
         // TUSHMAYDI; mos joy topilmasa, bo'sh qoladi (boshqa yechim keyin ko'riladi).
         // 1) Fanga maxsus xona biriktirilgan bo'lsa (masalan Jismoniy tarbiya — sport
         //    zali) — bu fan katta zaldan UMUMAN foydalanmaydi (subjectRoomMap).
         if (subjectRoomMap.has(ev.subjectId)) return false
-        // 2) QAT'IY: faqat 70-100 talabali potok (qattiq cheklash 8)
+        // 2) QAT'IY: faqat MAIN_HALL_MIN-MAIN_HALL_MAX talabali potok (qattiq cheklash 8)
         if (ev.groupSize < MAIN_HALL_MIN || ev.groupSize > MAIN_HALL_MAX) return false
       } else if (ev.groupSize <= LARGE_ROOM_CAPACITY && ev.type === 'Maʼruza') {
         // Fakultetga tegishli katta xona (kamdan-kam) — oddiy 60+ qoidasi. Amaliy/

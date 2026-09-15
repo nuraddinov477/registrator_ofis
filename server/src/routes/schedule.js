@@ -328,9 +328,9 @@ async function roomEligibility({ roomId, groupId, teacherId, type, subjectId }) 
   }
   // Katta auditoriya (60+) — generatsiyadagi kabi (loadData.js'ga qarang):
   // asosiy (fakultetsiz) binoda — QAT'IY, tur (Ma'ruza/Amaliy/Seminar)dan qat'i nazar,
-  // faqat 70-100 talaba, VA fanga boshqa joyda maxsus xona biriktirilgan bo'lsa
-  // (masalan sport zali) UMUMAN taqiqlanadi; fakultet binosida — oddiy 60+ qoidasi
-  // (faqat Ma'ruzada).
+  // faqat MAIN_HALL_MIN-MAIN_HALL_MAX (65-105, 70-100 ± 5) talaba, VA fanga boshqa
+  // joyda maxsus xona biriktirilgan bo'lsa (masalan sport zali) UMUMAN taqiqlanadi;
+  // fakultet binosida — oddiy 60+ qoidasi (faqat Ma'ruzada).
   if (room.capacity > LARGE_ROOM_CAPACITY) {
     const bFacId = room.building?.facultyId ?? null
     if (bFacId == null) {
