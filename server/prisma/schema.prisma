@@ -24,7 +24,8 @@ model Faculty {
   specialties Specialty[]
   groups      Group[]
   users       User[]
-  buildings   Building[]
+  buildings   Building[] // ESKI (yagona egalik) — DEPRECATED, ownedBuildings'ga qarang
+  ownedBuildings Building[] @relation("BuildingFaculties") // YANGI: ko'p-ko'pga egalik
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
@@ -120,11 +121,18 @@ model Building {
   name      String
   floors    Int      @default(1)
   address   String?
-  // Qaysi fakultetga tegishli — bo'sh (null) bo'lsa "asosiy/umumiy bino", hamma
-  // fakultet foydalanadi. Belgilangan bo'lsa — faqat shu fakultet guruhlari
-  // jadvalga shu bino xonalaridan foydalana oladi (qattiq cheklash, engine'da).
+  // ESKI (yagona egalik) — DEPRECATED, endi ishlatilmaydi. Faqat productiondagi eski
+  // ma'lumotni bir martalik backfill qilish uchun saqlanmoqda (server/src/index.js'ga
+  // qarang) — hali OLIB TASHLANMAYDI, chunki `prisma db push` ustunni zudlik bilan
+  // o'chirib yuborardi (backfill ulgurmasdan). Keyinroq, backfill tasdiqlangandan
+  // so'ng, alohida deployda olib tashlanadi.
   faculty   Faculty? @relation(fields: [facultyId], references: [id], onDelete: SetNull)
   facultyId Int?
+  // YANGI: bino BIR NECHTA fakultetga tegishli bo'lishi mumkin (ko'p-ko'pga) — bo'sh
+  // massiv = "asosiy/umumiy bino", hamma fakultet foydalanadi. Bo'sh bo'lmasa — FAQAT
+  // shu fakultet(lar) guruhlari jadvalga shu bino xonalaridan foydalana oladi (qattiq
+  // cheklash, engine'da: loadData.js/schedule.js).
+  faculties Faculty[] @relation("BuildingFaculties")
   rooms     Room[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -34,12 +34,13 @@ export async function loadData(prisma, semester = 1, opts = {}) {
       where: { semester, archived: false }, // arxivlangan yuklama jadval tuzishda hisobga olinmaydi
       include: { groups: { include: { group: true } }, teacher: true, subject: true },
     }),
-    prisma.room.findMany({ include: { permissions: true, building: true } }),
+    prisma.room.findMany({ include: { permissions: true, building: { include: { faculties: true } } } }),
     prisma.teacherConstraint.findMany(),
   ])
 
-  // Har bir xona uchun ruxsat to'plamlari (maxsus xonalar uchun) + qaysi fakultetning
-  // binosida joylashgani (bino.facultyId=null → "asosiy/umumiy" bino, hamma foydalanadi)
+  // Har bir xona uchun ruxsat to'plamlari (maxsus xonalar uchun) + qaysi fakultet(lar)ning
+  // binosida joylashgani (bino.faculties=[] → "asosiy/umumiy" bino, hamma foydalanadi;
+  // bino BIR NECHTA fakultetga tegishli bo'lishi mumkin — ko'p-ko'pga)
   const roomMeta = rooms.map((r) => {
     const teachers = new Set(), groups = new Set(), specialties = new Set(), exclusiveGroups = new Set(), subjects = new Set()
     for (const p of r.permissions) {
@@ -48,7 +49,8 @@ export async function loadData(prisma, semester = 1, opts = {}) {
       if (p.specialtyId != null) specialties.add(p.specialtyId)
       if (p.subjectId != null) subjects.add(p.subjectId)
     }
-    return { id: r.id, name: r.name, capacity: r.capacity, type: r.type, facultyId: r.building?.facultyId ?? null, teachers, groups, specialties, exclusiveGroups, subjects }
+    const facultyIds = r.building?.faculties?.map((f) => f.id) ?? []
+    return { id: r.id, name: r.name, capacity: r.capacity, type: r.type, facultyIds, teachers, groups, specialties, exclusiveGroups, subjects }
   })
 
   // Guruhga MAXSUS biriktirilgan xona(lar) — RoomPermission'da shu guruhga aniq ruxsat
@@ -106,7 +108,7 @@ export async function loadData(prisma, semester = 1, opts = {}) {
   const roomAllowed = (room, ev) => {
     if (room.capacity < ev.groupSize) return false // qattiq cheklash 5
     if (room.capacity > LARGE_ROOM_CAPACITY) {
-      if (room.facultyId == null) {
+      if (room.facultyIds.length === 0) {
         // Asosiy (fakultetsiz) binodagi katta zal ("Katta zal 1-7" va h.k.) — QAT'IY,
         // TUR (Ma'ruza/Amaliy/Seminar)DAN QAT'I NAZAR: faqat MAIN_HALL_MIN-MAIN_HALL_MAX
         // (65-105, ya'ni 70-100 ± 5 tolerantlik) talabali potok.
@@ -126,15 +128,16 @@ export async function loadData(prisma, semester = 1, opts = {}) {
         return false
       }
     }
-    // Fakultet bino egaligi — "asosiy" bino (facultyId=null) hammaga ochiq, boshqa
-    // fakultetning binosiga aralashmaydi (qattiq cheklash — bino qaysi fakultetniki
-    // bo'lsa, faqat o'sha fakultet guruhlari shu bino xonalaridan foydalanadi).
+    // Fakultet bino egaligi — "asosiy" bino (faculties=[]) hammaga ochiq, boshqa
+    // fakultetning binosiga aralashmaydi (qattiq cheklash — bino BIR YOKI BIR NECHTA
+    // fakultetga tegishli bo'lishi mumkin; shu fakultet(lar)dan BIRIGA tegishli guruh
+    // shu bino xonalaridan foydalana oladi).
     // ISTISNO: xonaga aniq ruxsat (o'qituvchi/guruh/yo'nalish/fan) berilgan bo'lsa —
     // masalan boshqa fakultetning binosidagi xonani biror guruhga maxsus biriktirilsa
     // (xona sig'imi yetarli bo'lib, o'z binosi yetishmayotgan fakultetlar uchun) —
     // bino-fakultet egaligi chetlab o'tiladi. Bu ATAYLAB shunday: aniq ruxsat umumiy
     // qoidadan ustun turadi, qaysi binoda joylashganidan qat'i nazar.
-    if (room.facultyId != null && !ev.facultyIds.includes(room.facultyId) && !hasRoomPermission(room, ev)) return false
+    if (room.facultyIds.length > 0 && !room.facultyIds.some((fid) => ev.facultyIds.includes(fid)) && !hasRoomPermission(room, ev)) return false
     if (room.type === 'umumiy') return true // hamma foydalanishi mumkin
     // maxsus: o'qituvchi / guruh(lar) / yo'nalish(lar) / FAN ruxsati (qattiq cheklash 6,7) —
     // potokda tanlangan guruhlardan BIRIGA (yoki darsning fani) ruxsat bo'lsa yetarli
@@ -215,7 +218,7 @@ export async function loadData(prisma, semester = 1, opts = {}) {
         infeasible.push(ev)
       } else if (ev.rooms.length === 0) {
         const fitByCap = roomMeta.filter((r) => r.capacity >= ev.groupSize)
-        const fitByFaculty = fitByCap.filter((r) => r.facultyId == null || ev.facultyIds.includes(r.facultyId))
+        const fitByFaculty = fitByCap.filter((r) => r.facultyIds.length === 0 || r.facultyIds.some((fid) => ev.facultyIds.includes(fid)))
         if (exclusiveRooms != null) {
           const names = exclusiveRooms.map((rid) => roomMeta.find((r) => r.id === rid)?.name).filter(Boolean)
           ev.reason = exclusiveRooms.length === 0
@@ -227,7 +230,7 @@ export async function loadData(prisma, semester = 1, opts = {}) {
         } else if (fitByFaculty.length === 0) {
           ev.reason = "fakultet binosida (yoki asosiy binoda) sig'imi mos xona yo'q — boshqa fakultet binosidan foydalanib bo'lmaydi"
         } else if (subjectRoomMap.has(ev.subjectId)
-          && fitByFaculty.every((r) => r.capacity > LARGE_ROOM_CAPACITY && r.facultyId == null)) {
+          && fitByFaculty.every((r) => r.capacity > LARGE_ROOM_CAPACITY && r.facultyIds.length === 0)) {
           ev.reason = "bu fanga maxsus xona biriktirilgan (masalan sport zali) — asosiy binodagi katta zaldan foydalanmaydi, lekin o'ziga tegishli xona yetarli emas yoki band"
         } else if (fitByFaculty.every((r) => r.capacity > LARGE_ROOM_CAPACITY)) {
           ev.reason = `guruh ${ev.groupSize} kishilik — mos sig'imli xonalarning barchasi katta zal: asosiy binoda faqat ${MAIN_HALL_MIN}-${MAIN_HALL_MAX} talabali potok (tur — Ma'ruza/Amaliy/Seminar — farqi yo'q), fakultet binosida faqat Ma'ruzada ${LARGE_ROOM_CAPACITY}+ talabaga ajratiladi`

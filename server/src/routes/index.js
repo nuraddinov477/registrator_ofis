@@ -8,6 +8,7 @@ import { requestsRouter } from './requests.js'
 import { handoverRouter } from './handover.js'
 import { assistantRouter } from './assistant.js'
 import { workloadsRouter } from './workloads.js'
+import { buildingsRouter } from './buildings.js'
 import { usersBulkRouter } from './usersBulk.js'
 import { requireRole, requireDeveloper } from '../auth/middleware.js'
 import { requireWrite, requireRead, scopeWhere as accessScopeWhere, scopeAssert as accessScopeAssert, protectSuperAdminTarget } from '../auth/access.js'
@@ -31,7 +32,8 @@ const resources = [
   { path: 'teachers', model: 'teacher', label: "O'qituvchi", schema: schemas.teacher, include: { department: true } },
   { path: 'subjects', model: 'subject', label: 'Fan', schema: schemas.subject },
   { path: 'groups', model: 'group', label: 'Guruh', schema: schemas.group, include: { faculty: true, specialty: true } },
-  { path: 'buildings', model: 'building', label: 'Bino', schema: schemas.building, include: { faculty: true } },
+  // 'buildings' — bu yerda EMAS: bino endi fakultet(lar) bilan ko'p-ko'pga bog'lanadi,
+  // o'z marshruti bor (pastda, workloads bilan bir xil naqsh)
   { path: 'rooms', model: 'room', label: 'Xona', schema: schemas.room, include: { building: true } },
   { path: 'room-permissions', model: 'roomPermission', label: 'Xona ruxsati', schema: schemas.roomPermission, include: { room: true, teacher: true, group: true, specialty: true, subject: true } },
   { path: 'teacher-constraints', model: 'teacherConstraint', label: "O'qituvchi istisnosi", schema: schemas.teacherConstraint, include: { teacher: true } },
@@ -49,6 +51,8 @@ export function buildRoutes() {
   router.use('/teachers', handoverRouter())
   // /users/block-all va /users/unblock-all — generic CRUD'dan OLDIN (developer-only)
   router.use('/users', usersBulkRouter())
+  // Bino — ko'p-ko'pga fakultet bog'lanishi (generic CRUD'dan tashqarida)
+  router.use('/buildings', buildingsRouter())
 
   for (const r of resources) {
     router.use(

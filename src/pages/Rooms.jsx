@@ -63,14 +63,15 @@ export default function Rooms() {
   // Xona → unga biriktirilgan fan ID'lari (forma uchun)
   const roomSubjectIds = (roomId) => roomPerms.filter((p) => p.roomId === roomId && p.subjectId != null).map((p) => p.subjectId)
 
-  const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '' } : { name: '', buildingId: '', capacity: 30, kind: 'Maʼruza', type: 'umumiy', subjectIds: [] }); setSubjectPick(''); setOpen(true) }
-  const openEdit = (r) => { setEditing(r); setForm(isB ? r : { ...r, subjectIds: roomSubjectIds(r.id) }); setSubjectPick(''); setOpen(true) }
+  const [facultyPick, setFacultyPick] = useState('') // bino qo'shish/tahrirlashda fakultet tanlash
+  const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '', facultyIds: [] } : { name: '', buildingId: '', capacity: 30, kind: 'Maʼruza', type: 'umumiy', subjectIds: [] }); setSubjectPick(''); setFacultyPick(''); setOpen(true) }
+  const openEdit = (r) => { setEditing(r); setForm(isB ? { ...r, facultyIds: (r.faculties || []).map((f) => f.id) } : { ...r, subjectIds: roomSubjectIds(r.id) }); setSubjectPick(''); setFacultyPick(''); setOpen(true) }
   const save = async (e) => {
     e.preventDefault()
     const subjectIds = form.subjectIds || []
     const p = { ...form }
     delete p.subjectIds
-    if (isB) p.floors = Number(p.floors) || 1
+    if (isB) { p.floors = Number(p.floors) || 1; delete p.faculties; delete p.facultyId }
     else { p.capacity = Number(p.capacity) || 0; p.buildingId = Number(p.buildingId) || '' }
     const saved = editing ? await db.update(coll, editing.id, p) : await db.add(coll, p)
     if (!isB) {
@@ -96,8 +97,17 @@ export default function Rooms() {
   const removeSubject = (sid) => {
     setForm({ ...form, subjectIds: (form.subjectIds || []).filter((x) => x !== sid) })
   }
+  const addFaculty = () => {
+    if (!facultyPick) return
+    const cur = form.facultyIds || []
+    const fid = Number(facultyPick)
+    if (!cur.includes(fid)) setForm({ ...form, facultyIds: [...cur, fid] })
+    setFacultyPick('')
+  }
+  const removeFaculty = (fid) => {
+    setForm({ ...form, facultyIds: (form.facultyIds || []).filter((x) => x !== fid) })
+  }
   const bName = (id) => buildings.find((b) => b.id === id)?.name || '—'
-  const facName = (id) => faculties.find((f) => f.id === id)?.name || '—'
 
   const TabBtn = ({ id, children }) => (
     <button onClick={() => setTab(id)} className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${tab === id ? 'bg-brand text-white' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{children}</button>
@@ -163,7 +173,7 @@ export default function Rooms() {
         <DataState loading={loading} onRetry={() => retry(coll)} />
       ) : (
       <Table
-        columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil', 'Fakultet'] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Kirish', 'Biriktirilgan']), ...(writable ? ['Amallar'] : [])]}
+        columns={[...(isB ? ['Nomi', 'Qavatlar', 'Manzil', "Fakultet(lar)"] : ['Nomi', 'Bino', 'Sigʻim', 'Turi', 'Kirish', 'Biriktirilgan']), ...(writable ? ['Amallar'] : [])]}
         rows={list}
         renderRow={(r) => (
           <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800/60 dark:hover:bg-slate-800/30">
@@ -172,7 +182,9 @@ export default function Rooms() {
               <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.floors}</td>
               <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.address || '—'}</td>
               <td className="px-4 py-3">
-                {r.facultyId ? <Badge color="blue">{facName(r.facultyId)}</Badge> : <Badge color="gray">Asosiy (umumiy)</Badge>}
+                {(r.faculties || []).length
+                  ? <div className="flex flex-wrap gap-1">{r.faculties.map((f) => <Badge key={f.id} color="blue">{f.name}</Badge>)}</div>
+                  : <Badge color="gray">Asosiy (umumiy)</Badge>}
               </td>
             </> : <>
               <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{bName(r.buildingId)}</td>
@@ -211,12 +223,32 @@ export default function Rooms() {
           {isB ? <>
             <Field label="Qavatlar"><input className="input" type="number" value={form.floors || 1} onChange={(e) => setForm({ ...form, floors: e.target.value })} /></Field>
             <Field label="Manzil"><input className="input" value={form.address || ''} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
-            <Field label="Fakultet">
-              <SearchableSelect value={form.facultyId || ''} onChange={(v) => setForm({ ...form, facultyId: v })}
-                options={faculties.map((f) => ({ value: f.id, label: f.name }))}
-                emptyLabel="Asosiy — hamma fakultet foydalanadi" placeholder="Fakultet qidirish..." />
+            <Field label="Fakultet(lar)">
+              <div className="space-y-2.5">
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <SearchableSelect value={facultyPick} onChange={setFacultyPick}
+                      options={faculties.filter((f) => !(form.facultyIds || []).includes(f.id)).map((f) => ({ value: f.id, label: f.name }))}
+                      placeholder="Fakultet qidirish..." />
+                  </div>
+                  <button type="button" className="btn-ghost shrink-0" onClick={addFaculty}>Qo'shish</button>
+                </div>
+                {(form.facultyIds || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(form.facultyIds || []).map((fid) => (
+                      <span key={fid} className="inline-flex items-center gap-1 rounded-md bg-brand/10 px-2 py-1 text-xs text-brand">
+                        {faculties.find((f) => f.id === fid)?.name || `#${fid}`}
+                        <button type="button" onClick={() => removeFaculty(fid)} className="hover:text-red-500"><X size={12} /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </Field>
-            <p className="text-xs text-slate-400">Fakultet tanlansa, jadval tuzishda bu binoning xonalarini FAQAT shu fakultet guruhlari egallaydi — boshqa fakultetga berilmaydi.</p>
+            <p className="text-xs text-slate-400">
+              Fakultet(lar) tanlansa, jadval tuzishda bu binoning xonalarini FAQAT shu fakultet(lar) guruhlari egallaydi — boshqalarga berilmaydi.
+              Bir nechta fakultet tanlansa, bino ular o'rtasida bo'lishiladi. Hech qaysi tanlanmasa — "asosiy" bino, hamma fakultet foydalanadi.
+            </p>
           </> : <>
             <Field label="Bino">
               <SearchableSelect value={form.buildingId || ''} onChange={(v) => setForm({ ...form, buildingId: v })}

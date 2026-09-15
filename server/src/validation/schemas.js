@@ -29,7 +29,12 @@ export const schemas = {
 
   group: z.object({ name, course: intDef(1), size: intDef(25), form: optStr, facultyId: optInt, specialtyId: optInt }),
 
-  building: z.object({ name, floors: intDef(1), address: optStr, facultyId: optInt }),
+  building: z.object({
+    name, floors: intDef(1), address: optStr,
+    // Ko'p-ko'pga: bino BIR NECHTA fakultetga tegishli bo'lishi mumkin. Bo'sh massiv =
+    // "asosiy/umumiy bino" (hammaga ochiq).
+    facultyIds: z.preprocess((v) => (Array.isArray(v) ? v.map(Number).filter(Number.isInteger) : []), z.array(z.number().int())),
+  }),
 
   room: z.object({
     name,

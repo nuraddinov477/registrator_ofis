@@ -318,7 +318,7 @@ const conflictMsg = (reasons) => `Bu mumkin emas: shu vaqtda ${reasons.join(', '
 // Mos bo'lsa null, aks holda aniq sabab matni qaytadi.
 async function roomEligibility({ roomId, groupId, teacherId, type, subjectId }) {
   const [room, group] = await Promise.all([
-    prisma.room.findUnique({ where: { id: roomId }, include: { permissions: true, building: true } }),
+    prisma.room.findUnique({ where: { id: roomId }, include: { permissions: true, building: { include: { faculties: true } } } }),
     prisma.group.findUnique({ where: { id: groupId } }),
   ])
   if (!room) return 'Xona topilmadi'
@@ -332,8 +332,8 @@ async function roomEligibility({ roomId, groupId, teacherId, type, subjectId }) 
   // joyda maxsus xona biriktirilgan bo'lsa (masalan sport zali) UMUMAN taqiqlanadi;
   // fakultet binosida — oddiy 60+ qoidasi (faqat Ma'ruzada).
   if (room.capacity > LARGE_ROOM_CAPACITY) {
-    const bFacId = room.building?.facultyId ?? null
-    if (bFacId == null) {
+    const bFacIds = room.building?.faculties?.map((f) => f.id) ?? []
+    if (bFacIds.length === 0) {
       if (subjectId != null) {
         const dedicated = await prisma.roomPermission.count({ where: { subjectId, room: { type: 'maxsus' } } })
         if (dedicated > 0) return `"${room.name}" — asosiy binodagi katta zal, bu fanga boshqa joyda maxsus xona biriktirilgan (masalan sport zali) — bu yerdan foydalanmaydi`
@@ -346,7 +346,7 @@ async function roomEligibility({ roomId, groupId, teacherId, type, subjectId }) 
       return `"${room.name}" — katta auditoriya (${room.capacity} o'rin), ma'ruzada faqat ${LARGE_ROOM_CAPACITY} dan ortiq talabali guruh/potok uchun ajratilgan (bu guruhda ${group.size} talaba)`
     }
   }
-  const bFac = room.building?.facultyId ?? null
+  const bFacIds = room.building?.faculties?.map((f) => f.id) ?? []
   // ISTISNO: xonaga aniq ruxsat (o'qituvchi/guruh/yo'nalish/fan) berilgan bo'lsa —
   // bino-fakultet egaligi chetlab o'tiladi (loadData.js bilan bir xil — masalan boshqa
   // fakultetning binosidagi xona o'z binosi yetishmayotgan fakultetga biriktirilishi mumkin)
@@ -354,7 +354,7 @@ async function roomEligibility({ roomId, groupId, teacherId, type, subjectId }) 
     p.teacherId === teacherId || p.groupId === groupId
     || (group.specialtyId != null && p.specialtyId === group.specialtyId)
     || (subjectId != null && p.subjectId === subjectId))
-  if (bFac != null && group.facultyId != null && bFac !== group.facultyId && !hasPermission) {
+  if (bFacIds.length > 0 && group.facultyId != null && !bFacIds.includes(group.facultyId) && !hasPermission) {
     return `"${room.name}" boshqa fakultet binosida — bu guruh u yerdan foydalana olmaydi`
   }
   if (room.type === 'maxsus') {
