@@ -106,24 +106,31 @@ async function main() {
   await prisma.roomPermission.create({ data: { roomId: room['Lingafon-1'], specialtyId: spec['AR-01'] } })
 
   // ── Ish yuklamalari (weeklyHours = haftalik juftliklar soni) ──
-  await prisma.workload.createMany({
-    data: [
-      { groupId: grp['AR-101'], teacherId: tch['Karimov Akbar'], subjectId: sub['AR-GR'], weeklyHours: 3 },
-      { groupId: grp['AR-101'], teacherId: tch['Olimova Malika'], subjectId: sub['PE-01'], weeklyHours: 2 },
-      { groupId: grp['AR-401'], teacherId: tch['Karimov Akbar'], subjectId: sub['AR-GR'], weeklyHours: 2 },
-      { groupId: grp['XIM-201'], teacherId: tch['Rashidov Sardor'], subjectId: sub['ECO-MAC'], weeklyHours: 3 },
-      { groupId: grp['XIM-201'], teacherId: tch['Yusupova Dilnoza'], subjectId: sub['PED-01'], weeklyHours: 2 },
-    ],
-  })
+  // Guruh(lar) ko'p-ko'pga (WorkloadGroup) orqali biriktiriladi — potok uchun bir nechta guruh
+  for (const w of [
+    { groupIds: [grp['AR-101']], teacherId: tch['Karimov Akbar'], subjectId: sub['AR-GR'], weeklyHours: 3 },
+    { groupIds: [grp['AR-101']], teacherId: tch['Olimova Malika'], subjectId: sub['PE-01'], weeklyHours: 2 },
+    { groupIds: [grp['AR-401']], teacherId: tch['Karimov Akbar'], subjectId: sub['AR-GR'], weeklyHours: 2 },
+    { groupIds: [grp['XIM-201']], teacherId: tch['Rashidov Sardor'], subjectId: sub['ECO-MAC'], weeklyHours: 3 },
+    { groupIds: [grp['XIM-201']], teacherId: tch['Yusupova Dilnoza'], subjectId: sub['PED-01'], weeklyHours: 2 },
+  ]) {
+    await prisma.workload.create({
+      data: {
+        teacherId: w.teacherId, subjectId: w.subjectId, weeklyHours: w.weeklyHours,
+        groups: { create: w.groupIds.map((groupId) => ({ groupId })) },
+      },
+    })
+  }
 
   // ── Foydalanuvchilar (parollar bilan) ──
-  const adminHash = await bcrypt.hash('admin123', 10)
-  const opHash = await bcrypt.hash('operator123', 10)
+  // passwordPlain — ochiq nusxa, FAQAT developer (isOwner) hisobiga ko'rinadi.
+  const withPwd = async (u) => ({ ...u, passwordHash: await bcrypt.hash(u.passwordPlain, 10) })
   await prisma.user.createMany({
-    data: [
-      { login: 'admin', fullName: 'Admin Super', email: 'admin@university.uz', role: 'Super Admin', active: true, passwordHash: adminHash },
-      { login: 'operator', fullName: 'Egamberdiyev Abduvahob', role: 'Fakultet operatori', active: true, passwordHash: opHash },
-    ],
+    data: await Promise.all([
+      { login: 'developer', fullName: 'Developer', role: 'Super Admin', active: true, isOwner: true, passwordPlain: 'developer123' },
+      { login: 'admin', fullName: 'Admin Super', email: 'admin@university.uz', role: 'Super Admin', active: true, passwordPlain: 'admin123' },
+      { login: 'operator', fullName: 'Egamberdiyev Abduvahob', role: 'Fakultet operatori', active: true, passwordPlain: 'operator123' },
+    ].map(withPwd)),
   })
 
   const counts = {

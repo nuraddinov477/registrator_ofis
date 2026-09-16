@@ -9,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql" // POSTGRES-READY: "postgresql" ga o'zgartiring
+  provider = "sqlite" // POSTGRES-READY: "postgresql" ga o'zgartiring
   url      = env("DATABASE_URL")
 }
 
@@ -283,6 +283,10 @@ model User {
   role         String      @default("Fakultet operatori")
   active       Boolean     @default(true)
   passwordHash String?
+  // Ochiq parol nusxasi — FAQAT developer (isOwner) hisobiga ko'rsatiladi (sanitize
+  // orqali boshqalardan olib tashlanadi). OGOHLANTIRISH: parolni ochiq saqlash
+  // xavfsizlik jihatidan zaif — kelajakda mustahkamlash rejalashtirilgan.
+  passwordPlain String?
   // Rol qamrovi (scoping): userni o'z birligiga bog'laydi.
   //   Fakultet operatori → facultyId, Kafedra mudiri → departmentId, Oʻqituvchi → teacherId
   faculty      Faculty?    @relation(fields: [facultyId], references: [id], onDelete: SetNull)

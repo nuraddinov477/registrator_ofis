@@ -19,7 +19,9 @@ export function crudRouter({
   const router = Router()
   const delegate = prisma[model]
   const labelOf = (row) => row?.name ?? row?.fullName ?? row?.login ?? row?.id
-  const clean = (row) => (row ? sanitize(row) : row)
+  // sanitize(row, user) — joriy foydalanuvchiga qarab maxfiy maydonlarni filtrlaydi
+  // (masalan ochiq parol faqat developerga ko'rinadi)
+  const clean = (row, user) => (row ? sanitize(row, user) : row)
   // Joriy user qamrovidagi qo'shimcha where (null → filtrsiz)
   const whereFor = (req) => scopeWhere(req.user) || {}
 
@@ -28,13 +30,13 @@ export function crudRouter({
     const rows = await delegate.findMany({ where, include, orderBy })
     const q = (req.query.q ?? '').toString().toLowerCase().trim()
     const filtered = q ? rows.filter((r) => JSON.stringify(r).toLowerCase().includes(q)) : rows
-    res.json(filtered.map(clean))
+    res.json(filtered.map((r) => clean(r, req.user)))
   }))
 
   router.get('/:id', ...readGuard, asyncHandler(async (req, res) => {
     const row = await delegate.findFirst({ where: { id: Number(req.params.id), ...whereFor(req) }, include })
     if (!row) return res.status(404).json({ error: 'Topilmadi' })
-    res.json(clean(row))
+    res.json(clean(row, req.user))
   }))
 
   router.post('/', ...writeGuard, asyncHandler(async (req, res) => {
@@ -42,7 +44,7 @@ export function crudRouter({
     data = await scopeAssert(req.user, data, null)
     const row = await delegate.create({ data, include })
     await audit(`Qo'shildi: ${label}`, labelOf(row), req)
-    res.status(201).json(clean(row))
+    res.status(201).json(clean(row, req.user))
   }))
 
   router.put('/:id', ...writeGuard, asyncHandler(async (req, res) => {
@@ -54,7 +56,7 @@ export function crudRouter({
     data = await scopeAssert(req.user, data, existing)
     const row = await delegate.update({ where: { id }, data, include })
     await audit(`Tahrirlandi: ${label}`, labelOf(row), req)
-    res.json(clean(row))
+    res.json(clean(row, req.user))
   }))
 
   router.delete('/:id', ...writeGuard, asyncHandler(async (req, res) => {

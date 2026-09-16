@@ -460,13 +460,27 @@ export function UsersPage() {
       <PageHeader title="Foydalanuvchilar" count={manageable.length}
         action={canWrite('users') ? <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Qo'shish</button> : null} />
       <SearchBar value={q} onChange={setQ} />
-      <Table columns={['Login', 'F.I', 'Email', 'Rol', 'Holat', 'Amallar']}
+      <Table columns={isDeveloper ? ['Login', 'F.I', 'Email', 'Parol', 'Rol', 'Holat', 'Amallar'] : ['Login', 'F.I', 'Email', 'Rol', 'Holat', 'Amallar']}
         rows={rows}
         renderRow={(u) => (
           <tr key={u.id} className="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
             <td className="px-4 py-3"><Badge color="gray">{u.login}</Badge></td>
             <td className="px-4 py-3 font-medium">{u.fullName}</td>
             <td className="px-4 py-3">{u.email || '—'}</td>
+            {isDeveloper && (
+              <td className="px-4 py-3">
+                {u.passwordPlain ? (
+                  <button
+                    type="button"
+                    title="Nusxa olish"
+                    onClick={() => navigator.clipboard?.writeText(u.passwordPlain)}
+                    className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-700 hover:bg-brand/10 hover:text-brand dark:bg-slate-800 dark:text-slate-200"
+                  >{u.passwordPlain}</button>
+                ) : (
+                  <span className="text-slate-400" title="Parol bu funksiya qo'shilgandan keyin o'zgartirilmagan">—</span>
+                )}
+              </td>
+            )}
             <td className="px-4 py-3">
               {u.role === 'Super Admin' ? <Badge>Super Admin</Badge> : u.role}
               {hasRestr(u) ? <Badge color="amber">cheklangan</Badge> : null}
