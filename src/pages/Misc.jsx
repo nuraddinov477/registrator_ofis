@@ -60,7 +60,10 @@ export function Loads() {
   // O'qituvchining fakulteti — to'g'ridan-to'g'ri emas, kafedrasi orqali (Teacher →
   // Department → Faculty)
   const teacherFacultyId = (teacherId) => teachers.find((t) => t.id === Number(teacherId))?.department?.facultyId ?? null
-  const matchesFaculty = (l) => !fFaculty || String(teacherFacultyId(l.teacherId)) === String(fFaculty)
+  // Qidiruv YOZILAYOTGANDA fakultet filtri chetlab o'tiladi (boshqa fakultet o'qituvchisi
+  // ham qidiruv natijasida chiqishi kerak) — filtr faqat qidiruv BO'SH bo'lganda (oddiy
+  // ko'rib chiqishda) qo'llaniladi.
+  const matchesFaculty = (l) => !fFaculty || q || String(teacherFacultyId(l.teacherId)) === String(fFaculty)
   const filteredLoads = loads.filter((l) => searchText(l).includes(q.toLowerCase()) && matchesFaculty(l))
   const filteredArchived = showArchived ? archived.filter((l) => searchText(l).includes(q.toLowerCase()) && matchesFaculty(l)) : []
   const displayRows = [...filteredLoads, ...filteredArchived]
