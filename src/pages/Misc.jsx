@@ -60,6 +60,70 @@ export function Loads() {
   const displayRows = [...filteredLoads, ...filteredArchived]
   const typeColor = (t) => (t === 'Maʼruza' ? 'blue' : t === 'Seminar' ? 'amber' : 'gray')
 
+  // Ro'yxatni kurslar kesimida ko'rsatish uchun: yuklamaning kursi — unga bog'langan
+  // guruh(lar)ning kursi (potok — bir nechta guruh — odatda bir xil kursda, lekin har
+  // ehtimolga qarshi har xil bo'lsa "aralash" deb belgilanadi; guruhsiz yuklama — "—").
+  const courseOf = (l) => {
+    const courses = [...new Set((l.groups || []).map((x) => x.group?.course).filter((c) => c != null))]
+    if (courses.length === 0) return null
+    if (courses.length > 1) return 'aralash'
+    return courses[0]
+  }
+  const rowsByCourse = new Map()
+  for (const l of displayRows) {
+    const c = courseOf(l)
+    if (!rowsByCourse.has(c)) rowsByCourse.set(c, [])
+    rowsByCourse.get(c).push(l)
+  }
+  const courseKeys = [...rowsByCourse.keys()].sort((a, b) => {
+    if (a === 'aralash') return 1
+    if (b === 'aralash') return -1
+    if (a == null) return 1
+    if (b == null) return -1
+    return a - b
+  })
+  const courseLabel = (c) => (c === 'aralash' ? 'Aralash kurs (potok)' : c == null ? "Kursi noma'lum" : `${c}-kurs`)
+  const loadColumns = writable ? ['Oʻqituvchi', 'Fan', 'Turi', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami', 'Amallar'] : ['Oʻqituvchi', 'Fan', 'Turi', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami']
+  const renderLoadRow = (l) => {
+    // Fan soati — shu yuklamaning o'zida (weeklyHours, guruhlar soniga qaramasdan BIR MARTA);
+    // Reyting — potokdagi BARCHA guruhlar talabalari YIG'INDISI × 0.8
+    const lgroups = l.groups || []
+    const totalStudents = lgroups.reduce((s, x) => s + (x.group?.size || 0), 0)
+    const rating = lgroups.length ? Math.round(totalStudents * 0.8 * 10) / 10 : null
+    const total = Math.round(((l.weeklyHours || 0) + (rating || 0)) * 10) / 10
+    return (
+      <tr key={l.id} className={`border-b border-slate-100 last:border-0 dark:border-slate-800/60 ${l.archived ? 'opacity-60' : ''}`}>
+        <td className="px-4 py-3">{nm('teachers', l.teacherId)}</td>
+        <td className="px-4 py-3">{nm('subjects', l.subjectId)}</td>
+        <td className="px-4 py-3">
+          <div className="flex flex-wrap items-center gap-1">
+            <Badge color={typeColor(l.type)}>{l.type || 'Amaliy'}</Badge>
+            {l.archived && <Badge color="gray">Arxiv</Badge>}
+          </div>
+        </td>
+        <td className="px-4 py-3">{lgroups.map((x) => x.group?.name).filter(Boolean).join(', ') || '—'}</td>
+        <td className="px-4 py-3">{l.semester}</td>
+        <td className="px-4 py-3">{l.weeklyHours ?? '—'}</td>
+        <td className="px-4 py-3">{rating ?? '—'}</td>
+        <td className="px-4 py-3 font-semibold">{total}</td>
+        {writable && (
+          <td className="px-4 py-3">
+            <div className="flex items-center gap-1">
+              {l.archived ? (
+                <button onClick={() => restore(l)} title="Arxivdan tiklash" className="rounded-md p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/40"><RotateCcw size={15} /></button>
+              ) : (
+                <>
+                  <button onClick={() => openEdit(l)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand dark:hover:bg-slate-800"><Pencil size={15} /></button>
+                  <button onClick={() => archive(l)} title="Arxivlash (butunlay o'chmaydi)" className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/40"><Trash2 size={15} /></button>
+                </>
+              )}
+            </div>
+          </td>
+        )}
+      </tr>
+    )
+  }
+
   return (
     <div>
       <PageHeader title="O'quv yuklamasi" count={loads.length}
@@ -81,51 +145,19 @@ export function Loads() {
         <DataState loading={loading} onRetry={() => retry('loads')} />
       ) : tab === 'teacher' ? (
         <TeacherLoadsView loads={filteredLoads} nm={nm} />
+      ) : displayRows.length === 0 ? (
+        <Table columns={loadColumns} rows={[]} empty="Maʼlumot topilmadi" renderRow={renderLoadRow} />
       ) : (
-      <Table
-        columns={writable ? ['Oʻqituvchi', 'Fan', 'Turi', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami', 'Amallar'] : ['Oʻqituvchi', 'Fan', 'Turi', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami']}
-        rows={displayRows}
-        empty="Maʼlumot topilmadi"
-        renderRow={(l) => {
-          // Fan soati — shu yuklamaning o'zida (weeklyHours, guruhlar soniga qaramasdan BIR MARTA);
-          // Reyting — potokdagi BARCHA guruhlar talabalari YIG'INDISI × 0.8
-          const lgroups = l.groups || []
-          const totalStudents = lgroups.reduce((s, x) => s + (x.group?.size || 0), 0)
-          const rating = lgroups.length ? Math.round(totalStudents * 0.8 * 10) / 10 : null
-          const total = Math.round(((l.weeklyHours || 0) + (rating || 0)) * 10) / 10
-          return (
-          <tr key={l.id} className={`border-b border-slate-100 last:border-0 dark:border-slate-800/60 ${l.archived ? 'opacity-60' : ''}`}>
-            <td className="px-4 py-3">{nm('teachers', l.teacherId)}</td>
-            <td className="px-4 py-3">{nm('subjects', l.subjectId)}</td>
-            <td className="px-4 py-3">
-              <div className="flex flex-wrap items-center gap-1">
-                <Badge color={typeColor(l.type)}>{l.type || 'Amaliy'}</Badge>
-                {l.archived && <Badge color="gray">Arxiv</Badge>}
-              </div>
-            </td>
-            <td className="px-4 py-3">{lgroups.map((x) => x.group?.name).filter(Boolean).join(', ') || '—'}</td>
-            <td className="px-4 py-3">{l.semester}</td>
-            <td className="px-4 py-3">{l.weeklyHours ?? '—'}</td>
-            <td className="px-4 py-3">{rating ?? '—'}</td>
-            <td className="px-4 py-3 font-semibold">{total}</td>
-            {writable && (
-              <td className="px-4 py-3">
-                <div className="flex items-center gap-1">
-                  {l.archived ? (
-                    <button onClick={() => restore(l)} title="Arxivdan tiklash" className="rounded-md p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/40"><RotateCcw size={15} /></button>
-                  ) : (
-                    <>
-                      <button onClick={() => openEdit(l)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand dark:hover:bg-slate-800"><Pencil size={15} /></button>
-                      <button onClick={() => archive(l)} title="Arxivlash (butunlay o'chmaydi)" className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/40"><Trash2 size={15} /></button>
-                    </>
-                  )}
-                </div>
-              </td>
-            )}
-          </tr>
-          )
-        }}
-      />
+      <div className="space-y-6">
+        {courseKeys.map((c) => (
+          <div key={c ?? 'none'}>
+            <h3 className="mb-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
+              {courseLabel(c)} <span className="font-normal text-slate-400">({rowsByCourse.get(c).length} ta)</span>
+            </h3>
+            <Table columns={loadColumns} rows={rowsByCourse.get(c)} empty="Maʼlumot topilmadi" renderRow={renderLoadRow} />
+          </div>
+        ))}
+      </div>
       )}
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Yuklamani tahrirlash' : "Yuklama qo'shish"}>
         <form onSubmit={save} className="space-y-4">
