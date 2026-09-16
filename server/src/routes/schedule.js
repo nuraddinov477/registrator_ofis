@@ -101,28 +101,52 @@ scheduleRouter.get('/runs/:id', asyncHandler(async (req, res) => {
 }))
 
 // GET /api/schedule/runs/:id/grid?groupId=  — bitta guruh jadvali (nomlar bilan)
-scheduleRouter.get('/runs/:id/grid', asyncHandler(async (req, res) => {
-  const id = Number(req.params.id)
-  const groupId = Number(req.query.groupId)
-  if (!groupId) return res.status(400).json({ error: 'groupId kerak' })
-
-  const entries = await prisma.scheduleEntry.findMany({ where: { runId: id, groupId } })
+// Bir yoki bir nechta guruhning 6×5 jadval matritsasi. Faqat yozuvlarda UCHRAGAN
+// fan/o'qituvchi/xona nomlari o'qiladi (butun jadvallar emas) — jami 4 ta so'rov,
+// guruhlar soniga bog'liq emas.
+async function buildGrids(runId, groupIds) {
+  const entries = await prisma.scheduleEntry.findMany({ where: { runId, groupId: { in: groupIds } } })
+  const ids = (key) => [...new Set(entries.map((e) => e[key]))]
   const [subjects, teachers, rooms] = await Promise.all([
-    prisma.subject.findMany(), prisma.teacher.findMany(), prisma.room.findMany(),
+    prisma.subject.findMany({ where: { id: { in: ids('subjectId') } }, select: { id: true, name: true } }),
+    prisma.teacher.findMany({ where: { id: { in: ids('teacherId') } }, select: { id: true, fullName: true } }),
+    prisma.room.findMany({ where: { id: { in: ids('roomId') } }, select: { id: true, name: true } }),
   ])
   const sName = new Map(subjects.map((x) => [x.id, x.name]))
   const tName = new Map(teachers.map((x) => [x.id, x.fullName]))
   const rName = new Map(rooms.map((x) => [x.id, x.name]))
 
-  const grid = Array.from({ length: PAIRS }, () => Array(DAYS).fill(null))
+  const grids = Object.fromEntries(groupIds.map((gid) => [gid, Array.from({ length: PAIRS }, () => Array(DAYS).fill(null))]))
   for (const e of entries) {
-    grid[e.pair - 1][e.day] = {
+    grids[e.groupId][e.pair - 1][e.day] = {
       id: e.id,
       subject: sName.get(e.subjectId), teacher: tName.get(e.teacherId), room: rName.get(e.roomId),
       subjectId: e.subjectId, teacherId: e.teacherId, roomId: e.roomId, type: e.type,
     }
   }
-  res.json({ days: DAY_NAMES, grid })
+  return grids
+}
+
+scheduleRouter.get('/runs/:id/grid', asyncHandler(async (req, res) => {
+  const id = Number(req.params.id)
+  const groupId = Number(req.query.groupId)
+  if (!groupId) return res.status(400).json({ error: 'groupId kerak' })
+  const grids = await buildGrids(id, [groupId])
+  res.json({ days: DAY_NAMES, grid: grids[groupId] })
+}))
+
+// POST /api/schedule/runs/:id/grids  { groupIds: [...] } — ko'p guruhning jadvalini
+// BITTA so'rovda qaytaradi (yuklab olishda har guruhga alohida so'rov yuborish
+// rate-limit va DB ulanishlar hovuzini to'ldirib yuborardi). Faqat o'qish.
+const MAX_BULK_GROUPS = 1000
+scheduleRouter.post('/runs/:id/grids', asyncHandler(async (req, res) => {
+  const id = Number(req.params.id)
+  const raw = Array.isArray(req.body?.groupIds) ? req.body.groupIds : []
+  const groupIds = [...new Set(raw.map(Number).filter((n) => Number.isInteger(n) && n > 0))]
+  if (groupIds.length === 0) return res.status(400).json({ error: 'groupIds kerak' })
+  if (groupIds.length > MAX_BULK_GROUPS) return res.status(400).json({ error: `Bir so'rovda ko'pi bilan ${MAX_BULK_GROUPS} ta guruh` })
+  const grids = await buildGrids(id, groupIds)
+  res.json({ days: DAY_NAMES, grids })
 }))
 
 // GET /api/schedule/runs/:id/teacher-grid?teacherId=  — o'qituvchining o'z jadvali.

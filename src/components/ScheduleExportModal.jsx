@@ -29,41 +29,47 @@ export default function ScheduleExportModal({ open, onClose, runId }) {
   // Guruh tanlanmasa — joriy filtrga mos guruhlarning HAMMASI (kamida 1 tasi bo'lishi kerak)
   const targetGroups = groupId ? groups.filter((g) => g.id === Number(groupId)) : byCourse
 
-  // Bitta guruhning jadvalini yuklaydi — vaqtinchalik tarmoq xatosida (masalan ko'p
-  // so'rov bir vaqtda ketganda "Failed to fetch") 2 marta qayta urinadi.
-  const fetchOne = async (g, attempt = 1) => {
+  // Guruhlar bo'lagini (chunk) BITTA so'rovda yuklaydi (bulk endpoint) — vaqtinchalik
+  // xatoda 2 marta qayta urinadi.
+  const fetchChunk = async (chunk, attempt = 1) => {
     try {
-      return { group: g, ...(await api(`/schedule/runs/${runId}/grid?groupId=${g.id}`)) }
+      return await api(`/schedule/runs/${runId}/grids`, { method: 'POST', body: { groupIds: chunk.map((g) => g.id) } })
     } catch (e) {
-      if (attempt < 3) { await new Promise((r) => setTimeout(r, 400 * attempt)); return fetchOne(g, attempt + 1) }
-      return { group: g, error: e.message || 'Yuklab bo\'lmadi' }
+      if (attempt < 3) { await new Promise((r) => setTimeout(r, 800 * attempt)); return fetchChunk(chunk, attempt + 1) }
+      throw e
     }
   }
 
-  // Ko'p guruh bo'lsa (masalan 300+) BARCHASINI bir vaqtda so'rasak brauzer/server
-  // ortiqcha yuklanib "Failed to fetch" beradi — shu sabab CHEKLANGAN parallel (navbat
-  // bilan, bir vaqtda atigi 6 tasi) yuklaymiz, progress ko'rsatib boramiz.
+  // Har guruhga alohida so'rov yuborish (300+ guruhda) server rate-limiti va DB
+  // ulanishlar hovuzini to'ldirib yuborardi — shu sabab 100 tadan bo'laklab, ketma-ket
+  // bulk so'rov yuboramiz (300 guruh = 3 ta so'rov), progress ko'rsatib boramiz.
+  const CHUNK = 100
   const fetchGrids = async () => {
     if (!runId) throw new Error('Jadval tanlanmagan')
     if (targetGroups.length === 0) throw new Error('Mos guruh topilmadi')
-    const CONCURRENCY = 6
-    const results = new Array(targetGroups.length)
-    let doneCount = 0, idx = 0
+    const ok = [], failed = []
     setProgress({ done: 0, total: targetGroups.length })
-    const worker = async () => {
-      while (idx < targetGroups.length) {
-        const i = idx++
-        results[i] = await fetchOne(targetGroups[i])
-        doneCount++
-        setProgress({ done: doneCount, total: targetGroups.length })
+    for (let i = 0; i < targetGroups.length; i += CHUNK) {
+      const chunk = targetGroups.slice(i, i + CHUNK)
+      try {
+        const { days, grids } = await fetchChunk(chunk)
+        for (const g of chunk) ok.push({ group: g, days, grid: grids[g.id] })
+      } catch (e) {
+        for (const g of chunk) failed.push({ group: g, error: e.message || 'Yuklab bo\'lmadi' })
       }
+      setProgress({ done: Math.min(i + CHUNK, targetGroups.length), total: targetGroups.length })
     }
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, targetGroups.length) }, worker))
     setProgress(null)
-    const ok = results.filter((r) => !r.error)
-    const failed = results.filter((r) => r.error)
-    if (ok.length === 0) throw new Error('Hech qanday guruh jadvalini yuklab bo\'lmadi — internet aloqasini tekshiring')
+    if (ok.length === 0) throw new Error(failed[0]?.error || 'Hech qanday guruh jadvalini yuklab bo\'lmadi')
     return { ok, failed }
+  }
+
+  // Qisman muvaffaqiyat: fayl yuklandi, lekin ba'zi guruhlar tushib qoldi — nomlarning
+  // faqat boshini ko'rsatamiz (100 ta nom xabarni to'ldirib yubormasin)
+  const partialMsg = (failed) => {
+    const names = failed.slice(0, 8).map((f) => f.group?.name).join(', ')
+    const more = failed.length > 8 ? ` va yana ${failed.length - 8} ta` : ''
+    return `${failed.length} ta guruh yuklanmadi (${failed[0].error}): ${names}${more}. Qolganlari faylga kirdi — shularni qayta urinib ko'ring.`
   }
 
   const cellText = (c) => (c ? [c.subject, c.teacher, c.room].filter(Boolean).join('\n') : '')
@@ -97,7 +103,7 @@ export default function ScheduleExportModal({ open, onClose, runId }) {
         XLSX.utils.book_append_sheet(wb, ws, name)
       })
       XLSX.writeFile(wb, `jadval-${bundleLabel()}.xlsx`)
-      if (failed.length) setErr(`${failed.length} ta guruh yuklab bo'lmadi: ${failed.map((f) => f.group?.name).join(', ')} — qolganlari yuklandi, shularni alohida qayta urinib ko'ring.`)
+      if (failed.length) setErr(partialMsg(failed))
     } catch (e) { setErr(e.message || 'Yuklab bo\'lmadi') } finally { setBusy(''); setProgress(null) }
   }
 
@@ -121,7 +127,7 @@ export default function ScheduleExportModal({ open, onClose, runId }) {
         })
       })
       doc.save(`jadval-${bundleLabel()}.pdf`)
-      if (failed.length) setErr(`${failed.length} ta guruh yuklab bo'lmadi: ${failed.map((f) => f.group?.name).join(', ')} — qolganlari yuklandi, shularni alohida qayta urinib ko'ring.`)
+      if (failed.length) setErr(partialMsg(failed))
     } catch (e) { setErr(e.message || 'Yuklab bo\'lmadi') } finally { setBusy(''); setProgress(null) }
   }
 
