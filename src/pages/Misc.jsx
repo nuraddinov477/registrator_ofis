@@ -83,12 +83,17 @@ export function Loads() {
     return a - b
   })
   const courseLabel = (c) => (c === 'aralash' ? 'Aralash kurs (potok)' : c == null ? "Kursi noma'lum" : `${c}-kurs`)
-  const loadColumns = writable ? ['Oʻqituvchi', 'Fan', 'Turi', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami', 'Amallar'] : ['Oʻqituvchi', 'Fan', 'Turi', 'Guruh', 'Sem', 'Fan soati', 'Reyting', 'Jami']
+  // Yuklamaga bog'langan guruh(lar)dagi jami talaba soni (potok — barchasi qo'shiladi) —
+  // ham qator ichida, ham kurs bo'limi sarlavhasidagi jami uchun ishlatiladi
+  const studentsOf = (l) => (l.groups || []).reduce((s, x) => s + (x.group?.size || 0), 0)
+  const loadColumns = writable
+    ? ['Oʻqituvchi', 'Fan', 'Turi', 'Guruh', 'Talaba soni', 'Sem', 'Fan soati', 'Reyting', 'Jami', 'Amallar']
+    : ['Oʻqituvchi', 'Fan', 'Turi', 'Guruh', 'Talaba soni', 'Sem', 'Fan soati', 'Reyting', 'Jami']
   const renderLoadRow = (l) => {
     // Fan soati — shu yuklamaning o'zida (weeklyHours, guruhlar soniga qaramasdan BIR MARTA);
     // Reyting — potokdagi BARCHA guruhlar talabalari YIG'INDISI × 0.8
     const lgroups = l.groups || []
-    const totalStudents = lgroups.reduce((s, x) => s + (x.group?.size || 0), 0)
+    const totalStudents = studentsOf(l)
     const rating = lgroups.length ? Math.round(totalStudents * 0.8 * 10) / 10 : null
     const total = Math.round(((l.weeklyHours || 0) + (rating || 0)) * 10) / 10
     return (
@@ -102,6 +107,7 @@ export function Loads() {
           </div>
         </td>
         <td className="px-4 py-3">{lgroups.map((x) => x.group?.name).filter(Boolean).join(', ') || '—'}</td>
+        <td className="px-4 py-3">{totalStudents || '—'}</td>
         <td className="px-4 py-3">{l.semester}</td>
         <td className="px-4 py-3">{l.weeklyHours ?? '—'}</td>
         <td className="px-4 py-3">{rating ?? '—'}</td>
