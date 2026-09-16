@@ -48,8 +48,15 @@ export function Loads() {
     try { await api(`/workloads/${l.id}/restore`, { method: 'POST' }); retry('loads'); loadArchived() } catch (e) { alert(e.message || "Tiklashda xatolik") }
   }
   const nm = (coll, id) => db.get(coll).find((x) => x.id === Number(id))?.name || db.get(coll).find((x) => x.id === Number(id))?.fullName || '—'
-  const filteredLoads = loads.filter((l) => Object.values(l).join(' ').toLowerCase().includes(q.toLowerCase()))
-  const filteredArchived = showArchived ? archived.filter((l) => Object.values(l).join(' ').toLowerCase().includes(q.toLowerCase())) : []
+  // Jadvalda ko'rsatiladigan narsalar bo'yicha qidiradi (o'qituvchi/fan/guruh NOMI) —
+  // Object.values(l).join(' ') ishlamas edi, chunki l.teacher/l.subject/l.groups ICHKI
+  // obyektlar, join() ularni "[object Object]"ga aylantiradi, nomlar hech qachon mos kelmasdi.
+  const searchText = (l) => [
+    nm('teachers', l.teacherId), nm('subjects', l.subjectId), l.type, l.semester, l.weeklyHours,
+    ...(l.groups || []).map((x) => x.group?.name),
+  ].filter(Boolean).join(' ').toLowerCase()
+  const filteredLoads = loads.filter((l) => searchText(l).includes(q.toLowerCase()))
+  const filteredArchived = showArchived ? archived.filter((l) => searchText(l).includes(q.toLowerCase())) : []
   const displayRows = [...filteredLoads, ...filteredArchived]
   const typeColor = (t) => (t === 'Maʼruza' ? 'blue' : t === 'Seminar' ? 'amber' : 'gray')
 
