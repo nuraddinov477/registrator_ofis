@@ -16,6 +16,7 @@ export default function ScheduleExportModal({ open, onClose, runId }) {
   const [groupId, setGroupId] = useState('')
   const [busy, setBusy] = useState('') // '' | 'xlsx' | 'pdf'
   const [err, setErr] = useState('')
+  const [progress, setProgress] = useState(null) // { done, total } | null — ko'p guruhli yuklashda
 
   const byFaculty = facultyId ? groups.filter((g) => String(g.facultyId) === String(facultyId)) : groups
   const courses = [...new Set(byFaculty.map((g) => g.course))].sort((a, b) => a - b)
@@ -28,12 +29,41 @@ export default function ScheduleExportModal({ open, onClose, runId }) {
   // Guruh tanlanmasa — joriy filtrga mos guruhlarning HAMMASI (kamida 1 tasi bo'lishi kerak)
   const targetGroups = groupId ? groups.filter((g) => g.id === Number(groupId)) : byCourse
 
+  // Bitta guruhning jadvalini yuklaydi — vaqtinchalik tarmoq xatosida (masalan ko'p
+  // so'rov bir vaqtda ketganda "Failed to fetch") 2 marta qayta urinadi.
+  const fetchOne = async (g, attempt = 1) => {
+    try {
+      return { group: g, ...(await api(`/schedule/runs/${runId}/grid?groupId=${g.id}`)) }
+    } catch (e) {
+      if (attempt < 3) { await new Promise((r) => setTimeout(r, 400 * attempt)); return fetchOne(g, attempt + 1) }
+      return { group: g, error: e.message || 'Yuklab bo\'lmadi' }
+    }
+  }
+
+  // Ko'p guruh bo'lsa (masalan 300+) BARCHASINI bir vaqtda so'rasak brauzer/server
+  // ortiqcha yuklanib "Failed to fetch" beradi — shu sabab CHEKLANGAN parallel (navbat
+  // bilan, bir vaqtda atigi 6 tasi) yuklaymiz, progress ko'rsatib boramiz.
   const fetchGrids = async () => {
     if (!runId) throw new Error('Jadval tanlanmagan')
     if (targetGroups.length === 0) throw new Error('Mos guruh topilmadi')
-    return Promise.all(targetGroups.map(async (g) => ({
-      group: g, ...(await api(`/schedule/runs/${runId}/grid?groupId=${g.id}`)),
-    })))
+    const CONCURRENCY = 6
+    const results = new Array(targetGroups.length)
+    let doneCount = 0, idx = 0
+    setProgress({ done: 0, total: targetGroups.length })
+    const worker = async () => {
+      while (idx < targetGroups.length) {
+        const i = idx++
+        results[i] = await fetchOne(targetGroups[i])
+        doneCount++
+        setProgress({ done: doneCount, total: targetGroups.length })
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, targetGroups.length) }, worker))
+    setProgress(null)
+    const ok = results.filter((r) => !r.error)
+    const failed = results.filter((r) => r.error)
+    if (ok.length === 0) throw new Error('Hech qanday guruh jadvalini yuklab bo\'lmadi — internet aloqasini tekshiring')
+    return { ok, failed }
   }
 
   const cellText = (c) => (c ? [c.subject, c.teacher, c.room].filter(Boolean).join('\n') : '')
@@ -52,11 +82,11 @@ export default function ScheduleExportModal({ open, onClose, runId }) {
   const downloadExcel = async () => {
     setBusy('xlsx'); setErr('')
     try {
-      const results = await fetchGrids()
+      const { ok, failed } = await fetchGrids()
       const XLSX = await import('xlsx')
       const wb = XLSX.utils.book_new()
       const usedNames = new Set()
-      results.forEach(({ group, days, grid }, i) => {
+      ok.forEach(({ group, days, grid }, i) => {
         const rows = [['Para', ...days]]
         grid.forEach((row, pi) => rows.push([pi + 1, ...row.map(cellText)]))
         const ws = XLSX.utils.aoa_to_sheet(rows)
@@ -67,7 +97,8 @@ export default function ScheduleExportModal({ open, onClose, runId }) {
         XLSX.utils.book_append_sheet(wb, ws, name)
       })
       XLSX.writeFile(wb, `jadval-${bundleLabel()}.xlsx`)
-    } catch (e) { setErr(e.message || 'Yuklab bo\'lmadi') } finally { setBusy('') }
+      if (failed.length) setErr(`${failed.length} ta guruh yuklab bo'lmadi: ${failed.map((f) => f.group?.name).join(', ')} — qolganlari yuklandi, shularni alohida qayta urinib ko'ring.`)
+    } catch (e) { setErr(e.message || 'Yuklab bo\'lmadi') } finally { setBusy(''); setProgress(null) }
   }
 
   // jsPDF standart shrifti maxsus belgini (ʻ/ʼ) chizmaydi — oddiy apostrofga almashtiramiz
@@ -76,10 +107,10 @@ export default function ScheduleExportModal({ open, onClose, runId }) {
   const downloadPdf = async () => {
     setBusy('pdf'); setErr('')
     try {
-      const results = await fetchGrids()
+      const { ok, failed } = await fetchGrids()
       const [{ jsPDF }, { autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
       const doc = new jsPDF({ orientation: 'landscape' })
-      results.forEach(({ group, days, grid }, i) => {
+      ok.forEach(({ group, days, grid }, i) => {
         if (i > 0) doc.addPage()
         doc.setFontSize(14)
         doc.text(asciiFy(`Dars jadvali — ${group?.name || group?.id}`), 14, 12)
@@ -90,7 +121,8 @@ export default function ScheduleExportModal({ open, onClose, runId }) {
         })
       })
       doc.save(`jadval-${bundleLabel()}.pdf`)
-    } catch (e) { setErr(e.message || 'Yuklab bo\'lmadi') } finally { setBusy('') }
+      if (failed.length) setErr(`${failed.length} ta guruh yuklab bo'lmadi: ${failed.map((f) => f.group?.name).join(', ')} — qolganlari yuklandi, shularni alohida qayta urinib ko'ring.`)
+    } catch (e) { setErr(e.message || 'Yuklab bo\'lmadi') } finally { setBusy(''); setProgress(null) }
   }
 
   return (
@@ -116,14 +148,25 @@ export default function ScheduleExportModal({ open, onClose, runId }) {
             ? `"${groupName}" guruhining jadvali yuklanadi.`
             : `Guruh tanlanmasa — mos ${targetGroups.length} ta guruhning jadvali bitta faylga (Excel'da alohida varaq, PDF'da alohida sahifa) yig'ib yuklanadi.`}
         </p>
+        {progress && (
+          <div>
+            <div className="mb-1 flex justify-between text-xs text-slate-400">
+              <span>Guruhlar yuklanmoqda…</span>
+              <span>{progress.done} / {progress.total}</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+              <div className="h-full bg-brand transition-all" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
+            </div>
+          </div>
+        )}
         {err && <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">{err}</div>}
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" className="btn-ghost" onClick={close}>Bekor</button>
           <button type="button" className="btn-ghost" disabled={targetGroups.length === 0 || !!busy} onClick={downloadPdf}>
-            <FileText size={16} /> {busy === 'pdf' ? 'Tayyorlanmoqda…' : 'PDF'}
+            <FileText size={16} /> {busy === 'pdf' ? (progress ? `${progress.done}/${progress.total}…` : 'Tayyorlanmoqda…') : 'PDF'}
           </button>
           <button type="button" className="btn-primary" disabled={targetGroups.length === 0 || !!busy} onClick={downloadExcel}>
-            <FileSpreadsheet size={16} /> {busy === 'xlsx' ? 'Tayyorlanmoqda…' : 'Excel'}
+            <FileSpreadsheet size={16} /> {busy === 'xlsx' ? (progress ? `${progress.done}/${progress.total}…` : 'Tayyorlanmoqda…') : 'Excel'}
           </button>
         </div>
       </div>
