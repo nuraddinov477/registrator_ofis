@@ -12,6 +12,7 @@ import { canSeeRoute } from './lib/access'
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Rooms = lazy(() => import('./pages/Rooms'))
 const Schedule = lazy(() => import('./pages/Schedule'))
+const Potok = lazy(() => import('./pages/Potok'))
 const Faculties = lazy(() => import('./pages/resources').then((m) => ({ default: m.Faculties })))
 const Departments = lazy(() => import('./pages/resources').then((m) => ({ default: m.Departments })))
 const Specialties = lazy(() => import('./pages/resources').then((m) => ({ default: m.Specialties })))
@@ -84,6 +85,7 @@ export default function App() {
           <Route path="groups" element={<Guard path="/groups"><Groups /></Guard>} />
           <Route path="rooms" element={<Guard path="/rooms"><Rooms /></Guard>} />
           <Route path="schedule" element={<Guard path="/schedule"><Schedule /></Guard>} />
+          <Route path="potok" element={<Guard path="/potok"><Potok /></Guard>} />
           <Route path="users" element={<Guard path="/users"><UsersPage /></Guard>} />
           <Route path="audit" element={<Guard path="/audit"><Audit /></Guard>} />
         </Route>

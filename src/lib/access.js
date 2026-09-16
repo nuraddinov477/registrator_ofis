@@ -39,6 +39,7 @@ const ROUTE_ROLES = {
   '/groups': [SUPER, OPERATOR],
   '/rooms': [SUPER, OPERATOR],
   '/schedule': [SUPER, OPERATOR, MUDIR, TEACHER],
+  '/potok': [SUPER, OPERATOR, MUDIR],
   '/users': [SUPER, OPERATOR, MUDIR], // delegatsiya
   '/audit': [SUPER],
 }
@@ -47,7 +48,7 @@ const ROUTE_ROLES = {
 export const SECTION_LABELS = {
   loads: "O'quv yuklamasi", requests: 'Talabnomalar', specialties: 'Mutaxassisliklar',
   teachers: "O'qituvchilar", subjects: 'Fanlar', groups: 'Guruhlar', rooms: 'Bino va xonalar',
-  schedule: 'Dars jadvali', users: 'Foydalanuvchilar', faculties: 'Fakultetlar', departments: 'Kafedralar', audit: 'Audit',
+  schedule: 'Dars jadvali', potok: 'Potok hisob-kitobi', users: 'Foydalanuvchilar', faculties: 'Fakultetlar', departments: 'Kafedralar', audit: 'Audit',
 }
 
 export const currentUser = () => auth.user()

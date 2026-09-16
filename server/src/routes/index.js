@@ -9,6 +9,7 @@ import { handoverRouter } from './handover.js'
 import { assistantRouter } from './assistant.js'
 import { workloadsRouter } from './workloads.js'
 import { buildingsRouter } from './buildings.js'
+import { potokRouter } from './potok.js'
 import { usersBulkRouter } from './usersBulk.js'
 import { requireRole, requireDeveloper } from '../auth/middleware.js'
 import { requireWrite, requireRead, scopeWhere as accessScopeWhere, scopeAssert as accessScopeAssert, protectSuperAdminTarget } from '../auth/access.js'
@@ -75,6 +76,9 @@ export function buildRoutes() {
 
   // Jadval optimallashtirish engine
   router.use('/schedule', scheduleRouter)
+
+  // Potok fanlar hisob-kitobi — mavjud potoklar, statistika, birlashtirish tavsiyalari
+  router.use('/potok-report', potokRouter)
 
   // Kafedralararo ariza (o'qituvchi/dars so'rovi)
   router.use('/requests', requestsRouter())

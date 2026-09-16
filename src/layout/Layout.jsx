@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   LayoutGrid, BookOpen, FileText, Building2, Landmark, GraduationCap,
-  Users, Library, Network, Home, CalendarDays, UserCog, ShieldCheck,
+  Users, Library, Network, Home, CalendarDays, UserCog, ShieldCheck, Layers,
   Sun, Moon, ChevronLeft, ChevronRight, Menu, LogOut,
 } from 'lucide-react'
 import { auth } from '../api/client'
@@ -36,6 +36,7 @@ const navGroups = [
       { to: '/loads', label: "O'quv yuklamasi", icon: BookOpen },
       { to: '/requests', label: 'Talabnomalar', icon: FileText },
       { to: '/schedule', label: 'Dars jadvali', icon: CalendarDays },
+      { to: '/potok', label: 'Potok hisob-kitobi', icon: Layers },
     ],
   },
   {
