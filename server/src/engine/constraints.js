@@ -17,6 +17,13 @@ export const WEIGHTS = {
   // oynani yo'qotish uchun boshqa narsalarni qurbon qilishga tayyor turadi.
   teacherGap: 20,
   groupGap: 40,
+  // Guruh (talaba) oynasi 1 tadan OSHSA — foydalanuvchi so'rovi bo'yicha ("ko'pi bilan
+  // bitta okno mayli, undan oshmasligi kerak, qat'iy") — har qo'shimcha oyna uchun
+  // ALOHIDA, CHIZIQLI (kvadratik EMAS — hardWeight=1000'dan xavfsiz past turishi
+  // uchun, hatto potokda bir nechta guruh bitta harakatda birga siljisa ham) katta
+  // jarima (groupCost'ga qarang). 0 oyna ideal, 1 oyna qabul qilinadi (past narx),
+  // 2+ dan boshlab keskin qimmatlashadi.
+  groupGapOverCap: 150,
   consecutive: 3, // 4 tadan ortiq ketma-ket dars (har ortig'i)
   subjectSpread: 100, // bir fan bir kunda ikkinchi marta kelsa (ketma-ket bo'lsa ham, orada tanaffus bo'lsa ham) — boshqa kunga ko'chirilishi kerak. Vazn ATAYIN baland: teacherGap/lonePair/groupDayMin kabi "kunlarni siqish" tendensiyasidan HAR DOIM ustun turishi kerak (bir fan kuni muhimroq)
   subjectConsecutiveDays: 18, // bir fan ketma-ket kunlarga tushsa (masalan Dush+Sesh) — 1 kun oralik yetarli, ortiqcha tanaffus shart emas
@@ -125,8 +132,11 @@ export function groupCost(groupEvents, W = WEIGHTS) {
   }
 
   // Haftalik jami oyna — KVADRATIK (yuqoridagi izohga qarang): boshqa guruhlarga
-  // nisbatan to'planib qolgan oynani qattiqroq jazolab, taqsimlanishga majburlaydi
+  // nisbatan to'planib qolgan oynani qattiqroq jazolab, taqsimlanishga majburlaydi.
+  // 1 tadan oshgan qismi uchun ALOHIDA, ancha katta qo'shimcha jarima (qat'iy "ko'pi
+  // bilan bitta okno" qoidasi — WEIGHTS.groupGapOverCap'ga qarang).
   cost += weeklyGap * weeklyGap * W.groupGap
+  if (weeklyGap > 1) cost += (weeklyGap - 1) * W.groupGapOverCap
   // kunlar bo'yicha muvozanat (kvadratlar yig'indisi minimal bo'lsa teng taqsimlanadi)
   cost += counts.reduce((s, c) => s + c * c, 0) * W.groupBalance * 0.5
   // guruh uchun xona barqarorligi
