@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Layers, GitMerge, CheckCircle2, AlertTriangle, TrendingUp, Users } from 'lucide-react'
+import { Layers, GitMerge, CheckCircle2, TrendingUp, Users } from 'lucide-react'
 import { api } from '../api/client'
 import { PageHeader, Badge, DataState } from '../components/ui'
 
@@ -19,10 +19,10 @@ const fitsBadge = (fits) => fits
   ? <Badge color="green">Katta zalga mos</Badge>
   : <Badge color="amber">Mos emas</Badge>
 
-// Potok (bir nechta guruh birga o'qiydigan) fanlar bo'yicha hisob-kitob: mavjud
-// potoklar (Katta zalga — 65-105 talaba — mos yoki yo'qligi), umumiy statistika, va
-// hali alohida o'qiladigan guruhlarni birlashtirish tavsiyalari. Faqat ko'rsatuv —
-// hech narsani o'zgartirmaydi (yuklamalarni "O'quv yuklamasi" bo'limida tahrirlang).
+// Potok (bir nechta guruh birga o'qiydigan) fanlar bo'yicha hisob-kitob — FAQAT mavjud
+// Yuklamaga asoslanadi (tavsiya/taxmin YO'Q): mavjud potoklar va ularning Katta zalga
+// (65-105 talaba) mosligi, umumiy statistika. Faqat ko'rsatuv — hech narsani
+// o'zgartirmaydi (yuklamalarni "O'quv yuklamasi" bo'limida tahrirlang).
 export default function Potok() {
   const [semester, setSemester] = useState('1')
   const [data, setData] = useState(null)
@@ -43,7 +43,7 @@ export default function Potok() {
   return (
     <div>
       <PageHeader title="Potok fanlar hisob-kitobi" icon={Layers}
-        subtitle="Bir nechta guruh birga o'qiydigan (potok) fanlar, ularning Katta zalga (65-105 talaba) mosligi va birlashtirish tavsiyalari" />
+        subtitle="Bir nechta guruh birga o'qiydigan (potok) fanlar va ularning Katta zalga (65-105 talaba) mosligi — mavjud yuklamaga asosan" />
 
       <div className="mb-4 flex items-center gap-2">
         <span className="text-sm text-slate-500 dark:text-slate-400">Semestr:</span>
@@ -59,15 +59,14 @@ export default function Potok() {
         <p className="text-sm text-red-500">{err}</p>
       ) : (
         <>
-          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Tile label="Potoklar soni" value={data.stats.potokCount} icon={GitMerge} color="bg-blue-500" />
             <Tile label="Haftalik potok-soat" value={data.stats.totalPotokWeeklyHours} icon={TrendingUp} color="bg-cyan-500" />
             <Tile label="Tejalgan xona/vaqt" value={data.stats.slotsSaved} icon={CheckCircle2} color="bg-emerald-500" />
             <Tile label="Potokdagi talabalar" value={data.stats.studentsInPotok} icon={Users} color="bg-violet-500" />
-            <Tile label="Tavsiyalar" value={data.stats.suggestionCount} icon={AlertTriangle} color="bg-amber-500" />
           </div>
 
-          <div className="mb-6">
+          <div>
             <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-white">
               Mavjud potoklar ({data.existing.length})
             </h2>
@@ -89,38 +88,6 @@ export default function Potok() {
                       <Badge color="blue">jami: {e.totalSize}</Badge>
                     </div>
                     <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">{e.note}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <h2 className="mb-2 text-lg font-semibold text-slate-900 dark:text-white">
-              Birlashtirish tavsiyalari ({data.suggestions.length})
-            </h2>
-            {data.suggestions.length === 0 ? (
-              <p className="text-sm text-slate-400">Hozircha birlashtirish mumkin bo'lgan (bir fan + bir o'qituvchi, hali alohida o'qiydigan) guruh to'plami topilmadi.</p>
-            ) : (
-              <div className="space-y-2">
-                {data.suggestions.map((s, i) => (
-                  <div key={i} className="card p-3.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <span className="font-medium text-slate-800 dark:text-slate-100">{s.subject}</span>
-                        <span className="ml-2 text-xs text-slate-400">{s.teacher} · {s.type}</span>
-                      </div>
-                      {fitsBadge(s.fits)}
-                    </div>
-                    <p className="mt-2 text-xs text-slate-400">Mavjud guruhlar:</p>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {s.availableGroups.map((g) => (
-                        <Badge key={g.id} color={s.suggestedGroups.some((sg) => sg.id === g.id) ? 'blue' : 'gray'}>
-                          {g.name} ({g.size})
-                        </Badge>
-                      ))}
-                    </div>
-                    <p className="mt-2 text-sm text-slate-700 dark:text-slate-200">{s.note}</p>
                   </div>
                 ))}
               </div>
