@@ -172,7 +172,7 @@ export function Loads() {
       ) : tab === 'teacher' ? (
         <TeacherLoadsView loads={filteredLoads} nm={nm} />
       ) : displayRows.length === 0 ? (
-        <Table columns={loadColumns} rows={[]} empty="Maʼlumot topilmadi" renderRow={renderLoadRow} />
+        <Table columns={loadColumns} rows={[]} empty="Maʼlumot topilmadi" renderRow={renderLoadRow} pageSize={0} />
       ) : (
       <div className="space-y-6">
         {courseKeys.map((c) => (
@@ -180,7 +180,7 @@ export function Loads() {
             <h3 className="mb-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
               {courseLabel(c)} <span className="font-normal text-slate-400">({rowsByCourse.get(c).length} ta)</span>
             </h3>
-            <Table columns={loadColumns} rows={rowsByCourse.get(c)} empty="Maʼlumot topilmadi" renderRow={renderLoadRow} />
+            <Table columns={loadColumns} rows={rowsByCourse.get(c)} empty="Maʼlumot topilmadi" renderRow={renderLoadRow} pageSize={0} />
           </div>
         ))}
       </div>
