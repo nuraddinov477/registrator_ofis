@@ -107,15 +107,22 @@ export async function loadData(prisma, semester = 1, opts = {}) {
   // Event uchun xona mosligi: sig'im yetarli VA kirish ruxsati bor
   const roomAllowed = (room, ev) => {
     if (room.capacity < ev.groupSize) return false // qattiq cheklash 5
-    if (room.capacity > LARGE_ROOM_CAPACITY) {
+    // Agar shu XONANING O'ZI ushbu fanga maxsus biriktirilgan bo'lsa (masalan sport
+    // zali — Jismoniy tarbiya) — pastdagi katta zal/fakultet-xona HAJM qoidalari
+    // BUTUNLAY qo'llanilmaydi (bu O'ZINING maxsus xonasi, umumiy "Katta zal" emas;
+    // kirish ruxsati pastda, hasRoomPermission orqali baribir tekshiriladi) —
+    // aks holda xona (tasodifan 60+ o'rinli va asosiy binoda bo'lib qolsa) o'zini
+    // o'zi rad etib qo'yishi mumkin edi.
+    const isOwnDedicatedRoom = room.subjects.has(ev.subjectId)
+    if (!isOwnDedicatedRoom && room.capacity > LARGE_ROOM_CAPACITY) {
       if (room.facultyIds.length === 0) {
         // Asosiy (fakultetsiz) binodagi katta zal ("Katta zal 1-7" va h.k.) — QAT'IY,
         // TUR (Ma'ruza/Amaliy/Seminar)DAN QAT'I NAZAR: faqat MAIN_HALL_MIN-MAIN_HALL_MAX
         // (65-105, ya'ni 70-100 ± 5 tolerantlik) talabali potok.
         // Boshqa hech narsa — Amaliy/Seminar ham — "oxirgi chora" sifatida bu yerga
         // TUSHMAYDI; mos joy topilmasa, bo'sh qoladi (boshqa yechim keyin ko'riladi).
-        // 1) Fanga maxsus xona biriktirilgan bo'lsa (masalan Jismoniy tarbiya — sport
-        //    zali) — bu fan katta zaldan UMUMAN foydalanmaydi (subjectRoomMap).
+        // 1) Fanga (boshqa joyda) maxsus xona biriktirilgan bo'lsa (masalan Jismoniy
+        //    tarbiya — sport zali) — bu fan bu (umumiy) katta zaldan foydalanmaydi.
         if (subjectRoomMap.has(ev.subjectId)) return false
         // 2) QAT'IY: faqat MAIN_HALL_MIN-MAIN_HALL_MAX talabali potok (qattiq cheklash 8)
         if (ev.groupSize < MAIN_HALL_MIN || ev.groupSize > MAIN_HALL_MAX) return false
@@ -207,7 +214,10 @@ export async function loadData(prisma, semester = 1, opts = {}) {
       // binodagi Katta zalga qo'yiladi (pastda, candidateRooms'da). FALLBACK YO'Q — mos
       // joy topilmasa, dars bo'sh (infeasible) qoladi, pastdagi umumiy mexanizm buni
       // avtomatik aniq sabab bilan ko'rsatadi.
-      const isTwoParaPotok = groupIds.length > 1 && w.weeklyHours === 2
+      // ISTISNO: fanga MAXSUS xona biriktirilgan bo'lsa (masalan Jismoniy tarbiya — sport
+      // zali) — bu qoidaga umuman tegishli emas, chunki u allaqachon o'z maxsus xonasidan
+      // foydalanadi (subjectRoomMap), Katta zal band qilishga hojat yo'q.
+      const isTwoParaPotok = groupIds.length > 1 && w.weeklyHours === 2 && !subjectRoomMap.has(w.subjectId)
       if (isTwoParaPotok) ev.slots = ev.slots.filter((s) => dayOf(s) <= 2)
       // Nomzod xonalar: biriktirilgan xona(lar) oldinda, keyin sig'imi bo'yicha saralanadi —
       // greedy shulardan birinchi bo'sh topganini tanlaydi. ODATIY (bitta guruh) darsda ENG
