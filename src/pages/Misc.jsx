@@ -11,10 +11,12 @@ export function Loads() {
   const subjects = useCollection('subjects')
   const teachers = useCollection('teachers')
   const groups = useCollection('groups')
+  const faculties = useCollection('faculties')
   const loading = useIsLoading('loads')
   const failed = useLoadFailed('loads')
   const [tab, setTab] = useState('list')
   const [q, setQ] = useState('')
+  const [fFaculty, setFFaculty] = useState('') // fakultet bo'yicha filtr (o'qituvchining kafedrasi orqali)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({})
@@ -55,8 +57,12 @@ export function Loads() {
     nm('teachers', l.teacherId), nm('subjects', l.subjectId), l.type, l.semester, l.weeklyHours,
     ...(l.groups || []).map((x) => x.group?.name),
   ].filter(Boolean).join(' ').toLowerCase()
-  const filteredLoads = loads.filter((l) => searchText(l).includes(q.toLowerCase()))
-  const filteredArchived = showArchived ? archived.filter((l) => searchText(l).includes(q.toLowerCase())) : []
+  // O'qituvchining fakulteti — to'g'ridan-to'g'ri emas, kafedrasi orqali (Teacher →
+  // Department → Faculty)
+  const teacherFacultyId = (teacherId) => teachers.find((t) => t.id === Number(teacherId))?.department?.facultyId ?? null
+  const matchesFaculty = (l) => !fFaculty || String(teacherFacultyId(l.teacherId)) === String(fFaculty)
+  const filteredLoads = loads.filter((l) => searchText(l).includes(q.toLowerCase()) && matchesFaculty(l))
+  const filteredArchived = showArchived ? archived.filter((l) => searchText(l).includes(q.toLowerCase()) && matchesFaculty(l)) : []
   const displayRows = [...filteredLoads, ...filteredArchived]
   const typeColor = (t) => (t === 'Maʼruza' ? 'blue' : t === 'Seminar' ? 'amber' : 'gray')
 
@@ -135,6 +141,17 @@ export function Loads() {
       <PageHeader title="O'quv yuklamasi" count={loads.length}
         action={writable ? <button className="btn-primary" onClick={openAdd}><Plus size={16} /> Qo'shish</button> : null} />
       <SearchBar value={q} onChange={setQ} />
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-slate-400">Fakultet bo'yicha (o'qituvchi kafedrasi):</span>
+        <div className="w-auto min-w-[12rem]">
+          <SearchableSelect value={fFaculty} onChange={setFFaculty}
+            options={faculties.map((f) => ({ value: f.id, label: f.name }))}
+            emptyLabel="Barcha fakultetlar" placeholder="Fakultet qidirish..." />
+        </div>
+        {fFaculty && (
+          <button className="text-sm text-slate-500 hover:text-brand" onClick={() => setFFaculty('')}>Tozalash</button>
+        )}
+      </div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800/60">
           {[['list', "Yuklama ro'yxati"], ['teacher', "O'qituvchi yuklamasi"]].map(([id, l]) => (
