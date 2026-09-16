@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, Search, ChevronDown, Check } from 'lucide-react'
+import { X, Search, ChevronDown, Check, ChevronLeft, ChevronRight } from 'lucide-react'
 
 export function PageHeader({ title, subtitle, icon: Icon, count, action }) {
   return (
@@ -35,7 +35,20 @@ export function SearchBar({ value, onChange, placeholder = 'Qidirish...' }) {
   )
 }
 
-export function Table({ columns, rows, renderRow, empty = 'Maʼlumot topilmadi' }) {
+// Jadval — ichida sahifalash (pagination) bor: katta ro'yxatda brauzer hamma
+// qatorni emas, faqat joriy sahifani chizadi (tez ishlashi uchun). `pageSize`
+// bir sahifadagi qatorlar soni; `pageSize={0}` sahifalashni butkul o'chiradi.
+// Qatorlar soni pageSize'dan kam bo'lsa sahifalash tugmalari ko'rinmaydi.
+export function Table({ columns, rows, renderRow, empty = 'Maʼlumot topilmadi', pageSize = 15 }) {
+  const [page, setPage] = useState(1)
+  const total = rows.length
+  const pageCount = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1
+  // Natijalar soni o'zgarsa (qidiruv/filtr/qo'shish/o'chirish) — birinchi sahifaga qaytamiz
+  useEffect(() => { setPage(1) }, [total])
+  // Joriy sahifa diapazondan chiqib qolgan bo'lsa (masalan sahifa raqami eskirgan) — to'g'rilaymiz
+  const current = Math.min(page, pageCount)
+  const pageRows = pageSize > 0 ? rows.slice((current - 1) * pageSize, current * pageSize) : rows
+
   return (
     <div className="card overflow-hidden">
       <div className="overflow-x-auto">
@@ -48,17 +61,68 @@ export function Table({ columns, rows, renderRow, empty = 'Maʼlumot topilmadi' 
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {pageRows.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="px-4 py-10 text-center text-slate-400">
                   {empty}
                 </td>
               </tr>
             ) : (
-              rows.map(renderRow)
+              pageRows.map(renderRow)
             )}
           </tbody>
         </table>
+      </div>
+      {pageSize > 0 && total > pageSize && (
+        <Pagination page={current} pageCount={pageCount} total={total} pageSize={pageSize} onPage={setPage} />
+      )}
+    </div>
+  )
+}
+
+// Ko'rsatiladigan sahifa raqamlari: har doim 1 va oxirgini, joriy atrofidagilarni;
+// orasidagi bo'shliqni "…" bilan (masalan: 1 … 4 5 6 … 20)
+function pageWindow(page, pageCount) {
+  const nums = [...new Set([1, page - 1, page, page + 1, pageCount])]
+    .filter((p) => p >= 1 && p <= pageCount)
+    .sort((a, b) => a - b)
+  const out = []
+  let prev = 0
+  for (const p of nums) {
+    if (p - prev > 1) out.push('…')
+    out.push(p)
+    prev = p
+  }
+  return out
+}
+
+// Sahifalash boshqaruvi: "X–Y / jami" ko'rsatkichi + oldingi/keyingi va raqamli tugmalar
+export function Pagination({ page, pageCount, total, pageSize, onPage }) {
+  const start = (page - 1) * pageSize + 1
+  const end = Math.min(page * pageSize, total)
+  const btn = 'inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-sm disabled:cursor-not-allowed disabled:opacity-40'
+  const ghost = 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 dark:border-slate-800">
+      <span className="text-xs text-slate-500 dark:text-slate-400">{start}–{end} / {total}</span>
+      <div className="flex items-center gap-1">
+        <button className={`${btn} ${ghost}`} disabled={page <= 1} onClick={() => onPage(page - 1)} aria-label="Oldingi">
+          <ChevronLeft size={16} />
+        </button>
+        {pageWindow(page, pageCount).map((p, i) =>
+          p === '…' ? (
+            <span key={`gap-${i}`} className="px-1 text-slate-400">…</span>
+          ) : (
+            <button
+              key={p}
+              onClick={() => onPage(p)}
+              className={`${btn} ${p === page ? 'bg-brand text-white' : ghost}`}
+            >{p}</button>
+          ),
+        )}
+        <button className={`${btn} ${ghost}`} disabled={page >= pageCount} onClick={() => onPage(page + 1)} aria-label="Keyingi">
+          <ChevronRight size={16} />
+        </button>
       </div>
     </div>
   )
