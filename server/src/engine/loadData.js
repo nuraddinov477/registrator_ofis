@@ -201,6 +201,14 @@ export async function loadData(prisma, semester = 1, opts = {}) {
         room: -1,
       }
       ev.slots = applyTeacherConstraint(allowedSlots(ev.startPair, ev.endPair), ev.teacherId) // ruxsat etilgan slotlar
+      // "2 para" POTOK QOIDASI (qat'iy, foydalanuvchi so'rovi bo'yicha): potok (groupIds.length>1)
+      // darsning shu yuklamadagi haftalik soati aynan 2 bo'lsa — FAQAT Dushanba/Seshanba/
+      // Chorshanba (kun indeksi 0,1,2 — DAY_NAMES'ga qarang) kunlariga VA FAQAT asosiy
+      // binodagi Katta zalga qo'yiladi (pastda, candidateRooms'da). FALLBACK YO'Q — mos
+      // joy topilmasa, dars bo'sh (infeasible) qoladi, pastdagi umumiy mexanizm buni
+      // avtomatik aniq sabab bilan ko'rsatadi.
+      const isTwoParaPotok = groupIds.length > 1 && w.weeklyHours === 2
+      if (isTwoParaPotok) ev.slots = ev.slots.filter((s) => dayOf(s) <= 2)
       // Nomzod xonalar: biriktirilgan xona(lar) oldinda, keyin sig'imi bo'yicha saralanadi —
       // greedy shulardan birinchi bo'sh topganini tanlaydi. ODATIY (bitta guruh) darsda ENG
       // KICHIK mos xona afzal (roomFit soft cheklashiga mos, katta xonani behuda band qilmaslik).
@@ -211,7 +219,8 @@ export async function loadData(prisma, semester = 1, opts = {}) {
       // qo'llanilmaydi (groupCost'ga qarang), shu sabab bu ustuvorlik SA davomida ham saqlanadi.
       const isPotok = groupIds.length > 1
       const candidateRooms = roomMeta.filter((r) =>
-        roomAllowed(r, ev) && (exclusiveRooms == null || exclusiveRooms.includes(r.id)))
+        roomAllowed(r, ev) && (exclusiveRooms == null || exclusiveRooms.includes(r.id))
+        && (!isTwoParaPotok || (r.facultyIds.length === 0 && r.capacity > LARGE_ROOM_CAPACITY)))
       candidateRooms.sort((a, b) => {
         const aA = assignedRooms.includes(a.id) ? 0 : 1, bA = assignedRooms.includes(b.id) ? 0 : 1
         if (aA !== bA) return aA - bA
@@ -221,12 +230,16 @@ export async function loadData(prisma, semester = 1, opts = {}) {
       ev.roomCapacities = Object.fromEntries(candidateRooms.map((r) => [r.id, r.capacity]))
       // Nega joylab bo'lmaydi — aniq sabab (UI'da ko'rsatiladi)
       if (ev.slots.length === 0) {
-        ev.reason = "o'qituvchining istisnolari (bloklangan kunlar / faqat ayrim juftliklar) tufayli bo'sh vaqt qolmadi"
+        ev.reason = isTwoParaPotok
+          ? "2 para potok qoidasi: Dushanba/Seshanba/Chorshanba kunlarida (yoki o'qituvchining istisnolari tufayli) bo'sh vaqt qolmadi"
+          : "o'qituvchining istisnolari (bloklangan kunlar / faqat ayrim juftliklar) tufayli bo'sh vaqt qolmadi"
         infeasible.push(ev)
       } else if (ev.rooms.length === 0) {
         const fitByCap = roomMeta.filter((r) => r.capacity >= ev.groupSize)
         const fitByFaculty = fitByCap.filter((r) => r.facultyIds.length === 0 || r.facultyIds.some((fid) => ev.facultyIds.includes(fid)))
-        if (exclusiveRooms != null) {
+        if (isTwoParaPotok) {
+          ev.reason = "2 para potok qoidasi: faqat asosiy binodagi Katta zalga qo'yiladi (qat'iy), lekin mos/bo'sh Katta zal topilmadi"
+        } else if (exclusiveRooms != null) {
           const names = exclusiveRooms.map((rid) => roomMeta.find((r) => r.id === rid)?.name).filter(Boolean)
           ev.reason = exclusiveRooms.length === 0
             ? 'potokdagi guruhlar har xil xonaga QAT\'IY biriktirilgan — bitta darsga umumiy xona yo\'q'
