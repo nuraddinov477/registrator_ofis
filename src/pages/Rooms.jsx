@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus, Pencil, Trash2, X, KeyRound } from 'lucide-react'
-import { db, useCollection, useIsLoading, useLoadFailed, retry } from '../data/store'
+import { db, useCollection, useIsLoading, useLoadFailed, useHasLoaded, retry } from '../data/store'
 import { canWrite } from '../lib/access'
 import { SearchBar, Table, Modal, Field, Badge, DataState, SearchableSelect } from '../components/ui'
 import RoomPermissionsModal from '../components/RoomPermissionsModal'
@@ -66,6 +67,20 @@ export default function Rooms() {
   const [facultyPick, setFacultyPick] = useState('') // bino qo'shish/tahrirlashda fakultet tanlash
   const openAdd = () => { setEditing(null); setForm(isB ? { name: '', floors: 1, address: '', facultyIds: [] } : { name: '', buildingId: '', capacity: 30, kind: 'Maʼruza', type: 'umumiy', subjectIds: [] }); setSubjectPick(''); setFacultyPick(''); setOpen(true) }
   const openEdit = (r) => { setEditing(r); setForm(isB ? { ...r, facultyIds: (r.faculties || []).map((f) => f.id) } : { ...r, subjectIds: roomSubjectIds(r.id) }); setSubjectPick(''); setFacultyPick(''); setOpen(true) }
+
+  // Tashxis havolasidan: ?room=<id> — "Xonalar" bo'limida shu xonani topib, tahrirlash oynasini ochadi
+  const [params, setParams] = useSearchParams()
+  const roomsReady = useHasLoaded('rooms')
+  const focusRoom = Number(params.get('room')) || null
+  useEffect(() => { if (focusRoom) setTab('rooms') }, [focusRoom])
+  useEffect(() => {
+    if (!focusRoom || tab !== 'rooms' || !roomsReady) return
+    const row = rooms.find((r) => r.id === focusRoom)
+    if (row) { setQ(row.name); if (writable) openEdit(row) }
+    const next = new URLSearchParams(params)
+    next.delete('room')
+    setParams(next, { replace: true })
+  }, [focusRoom, tab, roomsReady, rooms])
   const save = async (e) => {
     e.preventDefault()
     const subjectIds = form.subjectIds || []

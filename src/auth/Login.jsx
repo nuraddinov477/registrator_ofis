@@ -2,16 +2,22 @@ import { useState } from 'react'
 import { GraduationCap, LogIn } from 'lucide-react'
 import { auth } from '../api/client'
 
-// Faqat shu qurilma/brauzerda "eslab qolish" — kodga yozilmagan, boshqa hech kim
-// ko'rmaydi. Login muvaffaqiyatli o'tgach shu yerga yoziladi, forma keyingi safar
-// avtomatik to'ldiriladi (baribir "Kirish" bosish kerak — sayt ochiq bo'lgani uchun).
+// "Eslab qolish" — shu brauzerda FAQAT login saqlanadi. Parol hech qachon brauzer xotirasiga
+// yozilmaydi (uni brauzerning o'z parol menejeri xavfsiz saqlaydi — autoComplete atributlari).
 const REMEMBER_KEY = 'smartjadval-remember'
-const loadRemembered = () => { try { return JSON.parse(localStorage.getItem(REMEMBER_KEY) || 'null') } catch { return null } }
+const loadRemembered = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(REMEMBER_KEY) || 'null')
+    // Eski versiya parolni ham saqlagan — uni darhol o'chirib, faqat loginni qoldiramiz
+    if (saved && 'password' in saved) localStorage.setItem(REMEMBER_KEY, JSON.stringify({ login: saved.login }))
+    return saved
+  } catch { return null }
+}
 
 export default function Login() {
   const remembered = loadRemembered()
   const [login, setLogin] = useState(remembered?.login || '')
-  const [password, setPassword] = useState(remembered?.password || '')
+  const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(!!remembered)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -21,7 +27,7 @@ export default function Login() {
     setError(''); setBusy(true)
     try {
       await auth.login(login.trim(), password)
-      if (remember) localStorage.setItem(REMEMBER_KEY, JSON.stringify({ login: login.trim(), password }))
+      if (remember) localStorage.setItem(REMEMBER_KEY, JSON.stringify({ login: login.trim() }))
       else localStorage.removeItem(REMEMBER_KEY)
     } catch (err) {
       setError(err.message || 'Kirishda xatolik')
@@ -47,11 +53,11 @@ export default function Login() {
           )}
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Login</span>
-            <input className="input" value={login} onChange={(e) => setLogin(e.target.value)} required autoFocus />
+            <input className="input" name="username" autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} required autoFocus />
           </label>
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Parol</span>
-            <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <input className="input" type="password" name="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </label>
           <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="h-4 w-4 rounded" />

@@ -1,28 +1,19 @@
 import { Occupancy } from './occupancy.js'
-import { dayOf } from './timeslots.js'
+import { dayOf, pairOf } from './timeslots.js'
 import { TYPE_RANK } from './constraints.js'
 
 // Ochko'z (greedy) konstruksiya — DSATUR uslubi: eng "qiyin" eventlar birinchi.
 // Maqsad: qattiq cheklovlarni buzmaydigan boshlang'ich jadval (keyin SA yaxshilaydi).
-//
-// Tartib: kam nomzod xonali + katta guruh + kam slotli eventlar oldinda joylanadi —
-// chunki ularni keyin joylash qiyinroq.
+// Tartib: kam nomzod xonali, kam slotli, katta guruhli eventlar oldinda.
 export function greedyConstruct(ctx) {
   const occ = new Occupancy()
-  const order = [...ctx.events].sort((a, b) => {
-    if (a.rooms.length !== b.rooms.length) return a.rooms.length - b.rooms.length
-    if (a.slots.length !== b.slots.length) return a.slots.length - b.slots.length
-    return b.groupSize - a.groupSize
-  })
+  const order = [...ctx.events].sort((a, b) =>
+    (a.rooms.length - b.rooms.length) || (a.slots.length - b.slots.length) || (b.groupSize - a.groupSize))
 
-  // Bir xil fan/guruh eventlari greedy tartibida ko'pincha ketma-ket keladi (bir xil
-  // xona/slot soniga ega) — hech narsa aralashmasa, hammasi birinchi bo'sh kunga
-  // "uyumlashib" qolishga moyil. Shuni oldini olish uchun har guruh+fan uchun allaqachon
-  // band qilingan kunlarni kuzatib boramiz. Ikki darajali "yomonlik": SHU KUN (2 —
-  // og'irrog'i, subjectSpread) qo'shni kundan (1 — subjectConsecutiveDays) YOMONROQ —
-  // haftalik soat ko'p bo'lib hammasiga toza kun yetmasa, greedy shu kun EMAS, qo'shni
-  // kunni tanlaydi (constraints.js'dagi vazn tartibiga mos: 25 > 18).
-  const usedDays = new Map() // "groupId|subjectId" -> Set(day)
+  // Bir xil fan/guruh eventlari bir kunga "uyumlashib" qolmasligi uchun band kunlarni kuzatamiz.
+  // Yomonlik: 2 — shu kun (subjectSpread), 1 — qo'shni kun (subjectConsecutiveDays), 0 — toza
+  const usedDays = new Map() // "guruh|fan" → Set(kun)
+  const typeSlots = new Map() // "guruh|fan" → [[rank, slot]]
   const daySeverity = (ev, day) => {
     let worst = 0
     for (const gid of ev.groupIds) {
@@ -36,19 +27,41 @@ export function greedyConstruct(ctx) {
     return worst
   }
 
-  // Dars turi tartibi (ma'ruza→seminar→amaliy): bir fan+guruh uchun allaqachon
-  // joylangan boshqa turdagi darslarga nisbatan kandidat slot noto'g'ri tomonda
-  // bo'lsa (masalan seminar ma'ruzadan oldinroq slotga tushsa) — bu "yomon" hisoblanadi.
-  const typeSlots = new Map() // "groupId|subjectId" -> [{ rank, slot }]
+  // Dars turi tartibi (ma'ruza→seminar→amaliy): kandidat slot noto'g'ri tomondami?
   const hasTypeViolation = (ev, slot) => {
     const rank = TYPE_RANK[ev.type]
     if (rank == null) return false
-    return ev.groupIds.some((gid) => {
-      const placed = typeSlots.get(`${gid}|${ev.subjectId}`)
-      if (!placed) return false
-      return placed.some((p) => (p.rank < rank && p.slot > slot) || (p.rank > rank && p.slot < slot))
-    })
+    return ev.groupIds.some((gid) => (typeSlots.get(`${gid}|${ev.subjectId}`) || [])
+      .some(([pRank, pSlot]) => (pRank < rank && pSlot > slot) || (pRank > rank && pSlot < slot)))
   }
+
+  // Oyna (darslar orasidagi bo'sh juftlik) QAT'IY taqiqlangan: guruhning har kunidagi band juftliklari
+  // kuzatiladi va oyna ochmaydigan (yoki mavjudini yopadigan) slot afzal ko'riladi; ikkinchi darajada —
+  // kunni kechroq boshlatmaydigan slot
+  const groupStart = ctx.groupStart
+  const dayPairs = new Map() // "guruh|kun" → Set(juftlik 1..6)
+  // [oynalar o'zgarishi, kun boshidagi bo'sh vaqt o'zgarishi]
+  const gapChange = (ev, slot) => {
+    const day = dayOf(slot), pair = pairOf(slot)
+    let inner = 0, lead = 0
+    for (const gid of ev.uniqueGroupIds) {
+      const pairs = dayPairs.get(`${gid}|${day}`)
+      const start = groupStart.get(gid) ?? 1
+      if (!pairs || pairs.size === 0) {
+        lead += Math.max(0, pair - start)
+      } else if (!pairs.has(pair)) {
+        const lo = Math.min(...pairs), hi = Math.max(...pairs)
+        if (lo < pair && pair < hi) inner -= 1 // oynani yopadi
+        else if (pair > hi) inner += pair - hi - 1
+        else {
+          inner += lo - pair - 1
+          lead += Math.max(0, pair - start) - Math.max(0, lo - start) // kun erta boshlanadi (<= 0)
+        }
+      }
+    }
+    return [inner, lead]
+  }
+
   const markUsed = (ev) => {
     const day = dayOf(ev.slot)
     const rank = TYPE_RANK[ev.type]
@@ -58,46 +71,50 @@ export function greedyConstruct(ctx) {
       usedDays.get(key).add(day)
       if (rank != null) {
         if (!typeSlots.has(key)) typeSlots.set(key, [])
-        typeSlots.get(key).push({ rank, slot: ev.slot })
+        typeSlots.get(key).push([rank, ev.slot])
       }
+      const dk = `${gid}|${day}`
+      if (!dayPairs.has(dk)) dayPairs.set(dk, new Set())
+      dayPairs.get(dk).add(pairOf(ev.slot))
     }
   }
 
+  // kalit = [oyna, kun takrori, tur tartibi (0/1), kech boshlanish] — leksikografik
+  const keyLess = (a, b) => {
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i]
+    return false
+  }
+
   for (const ev of order) {
-    if (ev.rooms.length === 0 || ev.slots.length === 0) continue // nomzod xona/slot yo'q — joylab bo'lmaydi
-    let fallback = null // { slot, room, conflicts>0 } — qattiq konflikt bo'lsa oxirgi zaxira
-    let clean = null // { slot, room, conflicts:0 } — konfliktsiz eng yaxshi topilgan (sev,tur) bo'yicha
-    let cleanSev = Infinity, cleanTypeViol = true
+    if (!ev.rooms.length || !ev.slots.length) continue // nomzod xona/slot yo'q — joylab bo'lmaydi
+    let fallback = null // [slot, room, conflicts] — qattiq konflikt bo'lsa oxirgi zaxira
+    let clean = null // [kalit, slot, room] — konfliktsiz eng yaxshisi
 
     for (const slot of ev.slots) {
-      // guruh(lar) va o'qituvchi shu slotda band bo'lsa — bu slot foydasiz, o'tkazib yuboramiz
-      const baseBusy = ev.groupIds.reduce((s, gid) => s + (occ.groupFree(gid, slot) ? 0 : 1), 0)
-        + (occ.teacherFree(ev.teacherId, slot) ? 0 : 1)
+      let baseBusy = 0
+      for (const gid of ev.groupIds) if (!occ.groupFree(gid, slot)) baseBusy++
+      if (!occ.teacherFree(ev.teacherId, slot)) baseBusy++
       if (baseBusy === 0) {
-        // bo'sh xona qidiramiz; topilsa — konfliktsiz joylashuv, kun-yomonligi eng
-        // kichigini (0=toza, 1=qo'shni kun, 2=xuddi shu kun) tanlaymiz
         const room = ev.rooms.find((r) => occ.roomFree(r, slot))
-        if (room != null) {
-          const sev = daySeverity(ev, dayOf(slot))
-          const typeViol = hasTypeViolation(ev, slot)
-          if (sev === 0 && !typeViol) { clean = { slot, room, conflicts: 0 }; break } // mukammal — darhol
-          if (sev < cleanSev || (sev === cleanSev && cleanTypeViol && !typeViol)) {
-            cleanSev = sev; cleanTypeViol = typeViol
-            clean = { slot, room, conflicts: 0 }
+        if (room !== undefined) {
+          const [inner, lead] = gapChange(ev, slot)
+          const key = [inner, daySeverity(ev, dayOf(slot)), hasTypeViolation(ev, slot) ? 1 : 0, lead]
+          if (clean === null || keyLess(key, clean[0])) {
+            clean = [key, slot, room]
+            // oyna ochmaydi (yoki yopadi) va boshqa qoidalar ham toza — darhol
+            if (key[0] <= 0 && key[1] === 0 && key[2] === 0 && key[3] <= 0) break
           }
         }
       }
       // konfliktsiz topilmasa — eng kam konfliktli variantni eslab qolamiz
-      if (!fallback || fallback.conflicts > 0) {
+      if (fallback === null || fallback[2] > 0) {
         const room = ev.rooms[0]
         const conflicts = baseBusy + (occ.roomFree(room, slot) ? 0 : 1)
-        if (!fallback || conflicts < fallback.conflicts) fallback = { slot, room, conflicts }
+        if (fallback === null || conflicts < fallback[2]) fallback = [slot, room, conflicts]
       }
     }
 
-    const chosen = clean || fallback
-    ev.slot = chosen.slot
-    ev.room = chosen.room
+    if (clean !== null) { ev.slot = clean[1]; ev.room = clean[2] } else { ev.slot = fallback[0]; ev.room = fallback[1] }
     occ.place(ev)
     markUsed(ev)
   }

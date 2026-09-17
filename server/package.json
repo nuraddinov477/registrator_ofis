@@ -12,7 +12,8 @@
     "db:reset": "prisma migrate reset --force",
     "db:seed": "node --env-file=.env prisma/seed.js",
     "db:studio": "prisma studio",
-    "solve": "node --env-file=.env src/engine/cli.js"
+    "solve": "node --env-file=.env src/engine/cli.js",
+    "test": "node --test test/"
   },
   "prisma": {
     "seed": "node --env-file=.env prisma/seed.js"

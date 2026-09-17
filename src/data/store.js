@@ -72,6 +72,11 @@ export function useIsLoading(coll) {
   return useSyncExternalStore(subscribe, () => isLoading(coll), () => false)
 }
 
+// Kolleksiya kamida bir marta muvaffaqiyatli yuklanganmi (bo'sh ro'yxat "hali yo'q"dan farqli)
+export function useHasLoaded(coll) {
+  return useSyncExternalStore(subscribe, () => !!loaded[coll], () => false)
+}
+
 // Barcha qayta urinishlar tugadi-yu muvaffaqiyatsiz bo'ldi (xato holati, "Qayta urinish" tugmasi uchun)
 export function useLoadFailed(coll) {
   return useSyncExternalStore(subscribe, () => hasFailed(coll), () => false)

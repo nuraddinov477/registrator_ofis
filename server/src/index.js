@@ -1,6 +1,33 @@
 import { config } from './config.js'
 import { createApp } from './app.js'
 import { prisma } from './db.js'
+import { verifyPassword } from './auth/password.js'
+import { DEMO_PASSWORDS } from '../prisma/demoUsers.js'
+
+// Server qayta ishga tushganda (masalan Render uyqudan uyg'onganda) to'xtab qolgan generatsiyalar
+// abadiy "ishlanmoqda" bo'lib qolmasin. Faqat eski yozuvlar — boshqa nusxada hozir ishlayotganiga
+// tegilmaydi (eng uzun generatsiya ~2 daqiqa).
+const STALE_RUN_MINUTES = 10
+await prisma.schedulingRun.updateMany({
+  where: { status: 'running', updatedAt: { lt: new Date(Date.now() - STALE_RUN_MINUTES * 60_000) } },
+  data: {
+    status: 'failed',
+    report: JSON.stringify({ error: 'Generatsiya yakunlanmadi (server qayta ishga tushgan) — jadvalni qayta yarating' }),
+  },
+})
+  .then((r) => { if (r.count) console.log(`→ Bootstrap: ${r.count} ta to'xtab qolgan generatsiya 'failed' deb belgilandi`) })
+  .catch((e) => console.error('Bootstrap xatosi (eski generatsiyalar):', e.message))
+
+// Production'da demo paroli hali o'zgartirilmagan faol hisoblar — ogohlantirish
+if (config.isProd) {
+  await prisma.user.findMany({ where: { login: { in: Object.keys(DEMO_PASSWORDS) }, active: true } })
+    .then(async (users) => {
+      const weak = []
+      for (const u of users) if (await verifyPassword(DEMO_PASSWORDS[u.login], u.passwordHash)) weak.push(u.login)
+      if (weak.length) console.warn(`⚠️  XAVFSIZLIK: demo paroli o'zgartirilmagan hisoblar: ${weak.join(', ')} — darhol almashtiring!`)
+    })
+    .catch((e) => console.error('Bootstrap xatosi (demo parollar):', e.message))
+}
 
 // Bir martalik "bootstrap": isOwner ustuni yangi qo'shilgan bo'lsa (migratsiyadan
 // keyin standart holatda false), "developer" login'li hisobga avtomatik isOwner=true

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { DEMO_PASSWORDS } from './demoUsers.js'
 
 const prisma = new PrismaClient()
 
@@ -123,13 +124,18 @@ async function main() {
   }
 
   // ── Foydalanuvchilar (parollar bilan) ──
+  // Parol SEED_<LOGIN>_PASSWORD muhit o'zgaruvchisidan (production uchun), bo'lmasa demo parol —
+  // demo parolni production'da albatta almashtiring.
   // passwordPlain — ochiq nusxa, FAQAT developer (isOwner) hisobiga ko'rinadi.
-  const withPwd = async (u) => ({ ...u, passwordHash: await bcrypt.hash(u.passwordPlain, 10) })
+  const withPwd = async (u) => {
+    const passwordPlain = process.env[`SEED_${u.login.toUpperCase()}_PASSWORD`] || DEMO_PASSWORDS[u.login]
+    return { ...u, passwordPlain, passwordHash: await bcrypt.hash(passwordPlain, 10) }
+  }
   await prisma.user.createMany({
     data: await Promise.all([
-      { login: 'developer', fullName: 'Developer', role: 'Super Admin', active: true, isOwner: true, passwordPlain: 'developer123' },
-      { login: 'admin', fullName: 'Admin Super', email: 'admin@university.uz', role: 'Super Admin', active: true, passwordPlain: 'admin123' },
-      { login: 'operator', fullName: 'Egamberdiyev Abduvahob', role: 'Fakultet operatori', active: true, passwordPlain: 'operator123' },
+      { login: 'developer', fullName: 'Developer', role: 'Super Admin', active: true, isOwner: true },
+      { login: 'admin', fullName: 'Admin Super', email: 'admin@university.uz', role: 'Super Admin', active: true },
+      { login: 'operator', fullName: 'Egamberdiyev Abduvahob', role: 'Fakultet operatori', active: true },
     ].map(withPwd)),
   })
 

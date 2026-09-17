@@ -12,7 +12,7 @@ const maxMs = Number(process.argv[3]) || 5000
 function printGrid(ctx, groupId) {
   const evs = ctx.byGroup.get(groupId) || []
   if (!evs.length) return
-  console.log(`\n  Guruh: ${evs[0].groupName}`)
+  console.log(`\n  Guruh: ${evs[0].groupNames.join(', ')}`)
   const grid = buildGroupGrid(ctx, groupId)
   const head = ['Para', ...DAY_NAMES.map((d) => d.slice(0, 4))]
   console.log('  ' + head.map((h) => h.padEnd(16)).join(''))

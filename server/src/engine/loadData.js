@@ -1,269 +1,330 @@
+import { TYPE_RANK } from './constraints.js'
 import { allowedSlots, dayOf, pairOf, PAIRS } from './timeslots.js'
 
-// Katta auditoriya chegarasi: bundan katta sig'imli xonalar faqat shuncha (yoki undan
-// ortiq) talabali guruh/potokka ajratiladi — kichik guruhlar band qilmaydi.
+// Katta auditoriya: sig'imi shundan katta xona (asosiy yoki fakultet binosida) — "katta zal"
 export const LARGE_ROOM_CAPACITY = 60
-// Asosiy (fakultetsiz) binodagi katta zallar ("Katta zal 1-7" va h.k.) uchun QAT'IY
-// diapazon (dars turidan qat'i nazar) — asosiy 70-100 talabali potok, ± 5 talaba
-// tolerantlik bilan (ya'ni 65-105) — chegaraga yaqin guruhlar butunlay joysiz qolib
-// ketmasligi uchun.
+// Katta zallar faqat shu hajmdagi sinf uchun (QAT'IY): 70-100 talaba ± 5 tolerantlik. Talaba kam
+// bo'lsa — katta zal band qilinmaydi (fanning o'z xonasi — masalan sport zali — bundan mustasno)
 export const MAIN_HALL_MIN = 65
 export const MAIN_HALL_MAX = 105
+const SEMINAR = 'Seminar'
 
-// DB'dan ma'lumotni o'qib, optimallashtirish konteksti (events + nomzod xonalar) tuzadi.
-//
-// Har bir Workload(weeklyHours=N) → N ta "event" (har biri haftada bitta darsga).
-// Event = jadvalga joylanadigan eng kichik birlik. Guruh/o'qituvchi/fan QAT'IY,
-// faqat slot va xona o'zgaradi (qidiruv fazosi shu).
-export async function loadData(prisma, semester = 1, opts = {}) {
-  // groupStartPairs/groupEndPairs — har bir guruhning [boshlanish..tugash] juftlik
-  // oralig'i (1..6, real soatlar uchun timeslots.js'dagi PAIR_TIMES'ga qarang):
-  // { [groupId]: pair }. Superadmin har bir guruhni ALOHIDA tanlaydi. Ko'rsatilmagan
-  // guruhlar uchun standart — 1 (8:00) dan 6 (tugash, 17:20) gacha, ya'ni to'liq kun.
-  const { groupStartPairs = {}, groupEndPairs = {} } = opts
+// Xona nega mos kelmasligi (tashxis tavsiyalari uchun). FIXABLE — xonaga ruxsat berilsa yechiladi.
+export const ROOM_PROBLEMS = {
+  capacity: "sig'imi yetmaydi",
+  hall_dedicated: "asosiy binodagi katta zal — bu fanning o'z maxsus xonasi bor",
+  hall_size: `katta zal — faqat ${MAIN_HALL_MIN}-${MAIN_HALL_MAX} talabali sinf uchun`,
+  faculty: 'boshqa fakultet binosida',
+  special: "maxsus xona, kirish ruxsati yo'q",
+  exclusive: "guruh boshqa xona(lar)ga qat'iy biriktirilgan",
+  two_para: "2 para potok faqat asosiy binodagi katta zalga qo'yiladi",
+}
+const FIXABLE_ROOM_PROBLEMS = new Set(['faculty', 'special'])
+
+// Darsning guruhlari qanday qismlarga bo'linib o'tiladi. Seminar potoki oddiy xonaga sig'masa
+// (LARGE_ROOM_CAPACITY dan ko'p talaba) — sinf IKKIGA bo'linadi: guruhlar tartibi saqlanib, talaba
+// soni eng teng chiqadigan joydan. Har yarmi o'z darsini alohida o'tadi (katta zal seminarga
+// berilmaydi). Boshqa hollarda — bitta qism.
+export function lessonParts(members, lessonType, sizeOf) {
+  const sizes = members.map(sizeOf)
+  const total = sizes.reduce((s, x) => s + x, 0)
+  if (lessonType !== SEMINAR || members.length < 2 || total <= LARGE_ROOM_CAPACITY) return [members]
+  let best = 1, bestDiff = Infinity, prefix = 0
+  for (let k = 1; k < members.length; k++) {
+    prefix += sizes[k - 1]
+    const diff = Math.abs(total - 2 * prefix)
+    if (diff < bestDiff) { bestDiff = diff; best = k }
+  }
+  return [members.slice(0, best), members.slice(best)]
+}
+
+const memberSize = (member) => member?.group?.size || 0
+
+// Number(v), butun son bo'lsa — aks holda null (boolean ham null)
+const jsInt = (value) => {
+  if (value == null || typeof value === 'boolean') return null
+  const n = Number(value)
+  return Number.isInteger(n) ? n : null
+}
+
+const uniq = (list) => [...new Set(list)]
+
+// Kirish — Prisma javobi ko'rinishidagi obyektlar (loadData'da DB'dan o'qiladi).
+// groupStartPairs / groupEndPairs — har bir guruhning [boshlanish..tugash] juftligi ({ [groupId]: pair }).
+// Ko'rsatilmagan guruh uchun standart — 1 dan 6 gacha (to'liq kun).
+export function buildContext(workloads, rooms, teacherConstraints, semester = 1, groupStartPairs = {}, groupEndPairs = {}) {
+  groupStartPairs = groupStartPairs || {}
+  groupEndPairs = groupEndPairs || {}
   const startPairOf = (gid) => {
-    const v = Number(groupStartPairs[gid])
-    return Number.isInteger(v) && v >= 1 && v <= PAIRS ? v : 1
+    const v = gid == null ? null : jsInt(groupStartPairs[gid])
+    return v != null && v >= 1 && v <= PAIRS ? v : 1
   }
   const endPairOf = (gid, start) => {
-    const v = Number(groupEndPairs[gid])
-    return Number.isInteger(v) && v >= start && v <= PAIRS ? v : PAIRS
+    const v = gid == null ? null : jsInt(groupEndPairs[gid])
+    return v != null && v >= start && v <= PAIRS ? v : PAIRS
   }
-  const [workloads, rooms, teacherConstraints] = await Promise.all([
-    prisma.workload.findMany({
-      where: { semester, archived: false }, // arxivlangan yuklama jadval tuzishda hisobga olinmaydi
-      include: { groups: { include: { group: true } }, teacher: true, subject: true },
-    }),
-    prisma.room.findMany({ include: { permissions: true, building: { include: { faculties: true } } } }),
-    prisma.teacherConstraint.findMany(),
-  ])
 
-  // Har bir xona uchun ruxsat to'plamlari (maxsus xonalar uchun) + qaysi fakultet(lar)ning
-  // binosida joylashgani (bino.faculties=[] → "asosiy/umumiy" bino, hamma foydalanadi;
-  // bino BIR NECHTA fakultetga tegishli bo'lishi mumkin — ko'p-ko'pga)
+  // Har bir xona uchun ruxsat to'plamlari + qaysi fakultet(lar)ning binosida joylashgani
+  // (faculties=[] → "asosiy/umumiy" bino, hamma foydalanadi)
   const roomMeta = rooms.map((r) => {
-    const teachers = new Set(), groups = new Set(), specialties = new Set(), exclusiveGroups = new Set(), subjects = new Set()
-    for (const p of r.permissions) {
-      if (p.teacherId != null) teachers.add(p.teacherId)
-      if (p.groupId != null) { groups.add(p.groupId); if (p.exclusive) exclusiveGroups.add(p.groupId) }
-      if (p.specialtyId != null) specialties.add(p.specialtyId)
-      if (p.subjectId != null) subjects.add(p.subjectId)
+    const meta = {
+      id: r.id, name: r.name, capacity: r.capacity, type: r.type,
+      facultyIds: (r.building?.faculties || []).map((f) => f.id),
+      teachers: new Set(), groups: new Set(), specialties: new Set(), exclusiveGroups: new Set(), subjects: new Set(),
     }
-    const facultyIds = r.building?.faculties?.map((f) => f.id) ?? []
-    return { id: r.id, name: r.name, capacity: r.capacity, type: r.type, facultyIds, teachers, groups, specialties, exclusiveGroups, subjects }
+    for (const p of r.permissions || []) {
+      if (p.teacherId != null) meta.teachers.add(p.teacherId)
+      if (p.groupId != null) {
+        meta.groups.add(p.groupId)
+        if (p.exclusive) meta.exclusiveGroups.add(p.groupId)
+      }
+      if (p.specialtyId != null) meta.specialties.add(p.specialtyId)
+      if (p.subjectId != null) meta.subjects.add(p.subjectId)
+    }
+    return meta
   })
 
-  // Guruhga MAXSUS biriktirilgan xona(lar) — RoomPermission'da shu guruhga aniq ruxsat
-  // berilgan xonalar (Auditoriyaga biriktirilgan guruh — darslari o'sha xonaga qo'yilishi kerak).
-  // groupRoomMap — yumshoq ustuvorlik (assignedRoom). groupOnlyRoomMap — QAT'IY (exclusive):
-  // guruh FAQAT shu xona(lar)da dars o'tadi, boshqa xona nomzod bo'lmaydi.
-  // teacherRoomMap — o'qituvchiga MAXSUS biriktirilgan xona(lar): shu o'qituvchining
-  // darsi bo'lsa, o'sha xona unga ham ustuvor (assignedRoom). O'qituvchining darsi
-  // yo'q/boshqa vaqtda bo'lsa — xona band emas, shu bino/xona ruxsati bor GURUHLAR
-  // (groupRoomMap) ham xuddi shu ustuvorlik bilan tortiladi — ikkalasi ham "tekshiriladi".
-  const groupRoomMap = new Map() // groupId -> Set(roomId)  (barcha ruxsatlar)
-  const groupOnlyRoomMap = new Map() // groupId -> Set(roomId)  (faqat exclusive)
-  const teacherRoomMap = new Map() // teacherId -> Set(roomId)
-  // Fanga MAXSUS biriktirilgan xona(lar) — masalan "Jismoniy tarbiya" → sport zali.
-  // Qaysi guruh/o'qituvchi bo'lishidan qat'i nazar, shu FAN darsi bo'lsa ustuvor (va
-  // maxsus xona bo'lsa — kirish ruxsati ham shu orqali beriladi, roomAllowed'ga qarang).
-  const subjectRoomMap = new Map() // subjectId -> Set(roomId)
+  // groupRoomMap — yumshoq ustuvorlik (assignedRoom); groupOnlyRoomMap — QAT'IY (exclusive);
+  // teacherRoomMap / subjectRoomMap — o'qituvchiga / fanga (masalan sport zali) biriktirilgan xonalar
+  const groupRoomMap = new Map(), groupOnlyRoomMap = new Map(), teacherRoomMap = new Map(), subjectRoomMap = new Map()
+  const addTo = (map, key, roomId) => {
+    if (!map.has(key)) map.set(key, new Set())
+    map.get(key).add(roomId)
+  }
   for (const r of roomMeta) {
-    for (const gid of r.groups) {
-      if (!groupRoomMap.has(gid)) groupRoomMap.set(gid, new Set())
-      groupRoomMap.get(gid).add(r.id)
-    }
-    for (const gid of r.exclusiveGroups) {
-      if (!groupOnlyRoomMap.has(gid)) groupOnlyRoomMap.set(gid, new Set())
-      groupOnlyRoomMap.get(gid).add(r.id)
-    }
-    for (const tid of r.teachers) {
-      if (!teacherRoomMap.has(tid)) teacherRoomMap.set(tid, new Set())
-      teacherRoomMap.get(tid).add(r.id)
-    }
-    for (const sid of r.subjects) {
-      if (!subjectRoomMap.has(sid)) subjectRoomMap.set(sid, new Set())
-      subjectRoomMap.get(sid).add(r.id)
-    }
+    for (const gid of r.groups) addTo(groupRoomMap, gid, r.id)
+    for (const gid of r.exclusiveGroups) addTo(groupOnlyRoomMap, gid, r.id)
+    for (const tid of r.teachers) addTo(teacherRoomMap, tid, r.id)
+    for (const sid of r.subjects) addTo(subjectRoomMap, sid, r.id)
   }
 
-  // O'qituvchi istisnolari (qaysi kunlarda dars qo'yilmasin / faqat qaysi paralarga qo'yilsin)
-  const tcMap = new Map() // teacherId -> { blockedDays: Set<int>, allowedPairs: Set<int> }
+  // O'qituvchi istisnolari (qaysi kunlarda dars qo'yilmasin / faqat qaysi juftliklarga)
+  const tcMap = new Map()
   for (const tc of teacherConstraints) {
-    let blockedDays = [], allowedPairs = []
-    try { blockedDays = tc.blockedDays ? JSON.parse(tc.blockedDays) : [] } catch { /* noto'g'ri JSON — e'tiborsiz */ }
-    try { allowedPairs = tc.allowedPairs ? JSON.parse(tc.allowedPairs) : [] } catch { /* noto'g'ri JSON — e'tiborsiz */ }
-    tcMap.set(tc.teacherId, { blockedDays: new Set(blockedDays), allowedPairs: new Set(allowedPairs) })
+    let blocked = [], allowed = []
+    try { blocked = tc.blockedDays ? JSON.parse(tc.blockedDays) : [] } catch { /* noto'g'ri JSON — e'tiborsiz */ }
+    try { allowed = tc.allowedPairs ? JSON.parse(tc.allowedPairs) : [] } catch { /* noto'g'ri JSON — e'tiborsiz */ }
+    tcMap.set(tc.teacherId, { blocked: new Set(blocked), allowed: new Set(allowed) })
   }
 
-  // Xonaga aniq (o'qituvchi/guruh/yo'nalish/fan) ruxsat berilganmi? — maxsus xona
-  // uchun kirish sharti VA bino-fakultet egaligini chetlab o'tish sababi (pastga q.)
+  // Xonaga aniq (o'qituvchi/guruh/yo'nalish/fan) ruxsat berilganmi? — maxsus xonaga kirish sharti
+  // VA bino-fakultet egaligini chetlab o'tish sababi
   const hasRoomPermission = (room, ev) =>
     room.teachers.has(ev.teacherId)
     || ev.groupIds.some((gid) => room.groups.has(gid))
     || ev.specialtyIds.some((sid) => room.specialties.has(sid))
     || room.subjects.has(ev.subjectId)
 
-  // Event uchun xona mosligi: sig'im yetarli VA kirish ruxsati bor
-  const roomAllowed = (room, ev) => {
-    if (room.capacity < ev.groupSize) return false // qattiq cheklash 5
-    // Agar shu XONANING O'ZI ushbu fanga maxsus biriktirilgan bo'lsa (masalan sport
-    // zali — Jismoniy tarbiya) — pastdagi katta zal/fakultet-xona HAJM qoidalari
-    // BUTUNLAY qo'llanilmaydi (bu O'ZINING maxsus xonasi, umumiy "Katta zal" emas;
-    // kirish ruxsati pastda, hasRoomPermission orqali baribir tekshiriladi) —
-    // aks holda xona (tasodifan 60+ o'rinli va asosiy binoda bo'lib qolsa) o'zini
-    // o'zi rad etib qo'yishi mumkin edi.
+  // Xona darsga nega mos emas (ROOM_PROBLEMS kaliti) — mos bo'lsa null
+  const roomRejection = (room, ev) => {
+    if (room.capacity < ev.groupSize) return 'capacity'
+    // Xonaning O'ZI shu fanga biriktirilgan bo'lsa (masalan sport zali) — hajm qoidalari qo'llanilmaydi
     const isOwnDedicatedRoom = room.subjects.has(ev.subjectId)
     if (!isOwnDedicatedRoom && room.capacity > LARGE_ROOM_CAPACITY) {
-      if (room.facultyIds.length === 0) {
-        // Asosiy (fakultetsiz) binodagi katta zal ("Katta zal 1-7" va h.k.) — QAT'IY,
-        // TUR (Ma'ruza/Amaliy/Seminar)DAN QAT'I NAZAR: faqat MAIN_HALL_MIN-MAIN_HALL_MAX
-        // (65-105, ya'ni 70-100 ± 5 tolerantlik) talabali potok.
-        // Boshqa hech narsa — Amaliy/Seminar ham — "oxirgi chora" sifatida bu yerga
-        // TUSHMAYDI; mos joy topilmasa, bo'sh qoladi (boshqa yechim keyin ko'riladi).
-        // 1) Fanga (boshqa joyda) maxsus xona biriktirilgan bo'lsa (masalan Jismoniy
-        //    tarbiya — sport zali) — bu fan bu (umumiy) katta zaldan foydalanmaydi.
-        if (subjectRoomMap.has(ev.subjectId)) return false
-        // 2) QAT'IY: faqat MAIN_HALL_MIN-MAIN_HALL_MAX talabali potok (qattiq cheklash 8)
-        if (ev.groupSize < MAIN_HALL_MIN || ev.groupSize > MAIN_HALL_MAX) return false
-      } else if (ev.groupSize <= LARGE_ROOM_CAPACITY && ev.type === 'Maʼruza') {
-        // Fakultetga tegishli katta xona (kamdan-kam) — oddiy 60+ qoidasi. Amaliy/
-        // Seminar (kichik guruh) darslarga qattiq taqiqlanmaydi — aks holda kichik
-        // xonasi umuman yo'q fakultetlar hech qanday dars o'tkaza olmay qoladi.
-        // Bunday holatda ham ortiqcha sig'im roomFit yumshoq jarimasi bilan kamroq
-        // afzal qilinadi, lekin oxirgi chora sifatida ishlatilishi mumkin.
-        return false
-      }
+      // Asosiy binodagi katta zal: fanga boshqa joyda maxsus xona biriktirilgan bo'lsa — bu yerdan foydalanmaydi
+      if (room.facultyIds.length === 0 && subjectRoomMap.has(ev.subjectId)) return 'hall_dedicated'
+      // Har qanday katta zal (asosiy yoki fakultet binosida), dars turidan qat'i nazar — QAT'IY
+      // MAIN_HALL_MIN-MAIN_HALL_MAX talabali sinf; talaba kam bo'lsa katta zal band qilinmaydi
+      if (ev.groupSize < MAIN_HALL_MIN || ev.groupSize > MAIN_HALL_MAX) return 'hall_size'
     }
-    // Fakultet bino egaligi — "asosiy" bino (faculties=[]) hammaga ochiq, boshqa
-    // fakultetning binosiga aralashmaydi (qattiq cheklash — bino BIR YOKI BIR NECHTA
-    // fakultetga tegishli bo'lishi mumkin; shu fakultet(lar)dan BIRIGA tegishli guruh
-    // shu bino xonalaridan foydalana oladi).
-    // ISTISNO: xonaga aniq ruxsat (o'qituvchi/guruh/yo'nalish/fan) berilgan bo'lsa —
-    // masalan boshqa fakultetning binosidagi xonani biror guruhga maxsus biriktirilsa
-    // (xona sig'imi yetarli bo'lib, o'z binosi yetishmayotgan fakultetlar uchun) —
-    // bino-fakultet egaligi chetlab o'tiladi. Bu ATAYLAB shunday: aniq ruxsat umumiy
-    // qoidadan ustun turadi, qaysi binoda joylashganidan qat'i nazar.
-    if (room.facultyIds.length > 0 && !room.facultyIds.some((fid) => ev.facultyIds.includes(fid)) && !hasRoomPermission(room, ev)) return false
-    if (room.type === 'umumiy') return true // hamma foydalanishi mumkin
-    // maxsus: o'qituvchi / guruh(lar) / yo'nalish(lar) / FAN ruxsati (qattiq cheklash 6,7) —
-    // potokda tanlangan guruhlardan BIRIGA (yoki darsning fani) ruxsat bo'lsa yetarli
-    return hasRoomPermission(room, ev)
+    // Fakultet bino egaligi — aniq ruxsat (o'qituvchi/guruh/yo'nalish/fan) bo'lsa chetlab o'tiladi
+    if (room.facultyIds.length && !room.facultyIds.some((fid) => ev.facultyIds.includes(fid)) && !hasRoomPermission(room, ev)) {
+      return 'faculty'
+    }
+    if (room.type === 'umumiy') return null
+    // maxsus: potokdagi guruhlardan BIRIGA (yoki darsning faniga) ruxsat bo'lsa yetarli
+    return hasRoomPermission(room, ev) ? null : 'special'
   }
 
-  // O'qituvchi istisnolariga mos ravishda ruxsat etilgan slotlarni toraytiradi
+  // Xonasiz qolgan dars uchun eng yaqin xonalar va ular nega mos emasligi. Qat'iy biriktirilgan
+  // guruhda — faqat o'sha xonalar, "2 para" potokda — faqat asosiy binodagi katta zallar. Avval ruxsat
+  // berilsa sig'adigan xonalar (eng kichigi oldinda); bo'lmasa — boshqa sabab bilan rad etilgan eng
+  // yaqinlari va sig'imi yetmaydigan eng kattalari. Sababi va sig'imi bir xil xonalar bitta qatorga.
+  const roomSuggestions = (ev, exclusiveRooms, isTwoParaPotok, limit = 3) => {
+    let pool
+    if (exclusiveRooms != null) pool = roomMeta.filter((r) => exclusiveRooms.includes(r.id))
+    else if (isTwoParaPotok) pool = roomMeta.filter((r) => r.facultyIds.length === 0 && r.capacity > LARGE_ROOM_CAPACITY)
+    else pool = roomMeta
+    // boshqa fanning o'z xonasi (masalan sport zali) tavsiya qilinmaydi
+    pool = pool.filter((r) => r.subjects.size === 0 || r.subjects.has(ev.subjectId))
+    const rejected = []
+    for (const r of pool) {
+      const code = roomRejection(r, ev)
+      if (code !== null) rejected.push([r, code])
+    }
+    const collapse = (rows, count) => {
+      const items = new Map()
+      for (const [r, code] of rows) {
+        const key = `${code}|${r.capacity}`
+        if (items.has(key)) items.get(key).more++
+        else if (items.size < count) {
+          items.set(key, {
+            roomId: r.id, room: r.name, capacity: r.capacity, code,
+            problem: code === 'capacity' ? `${r.capacity} o'rin — ${ev.groupSize} talabaga sig'maydi` : ROOM_PROBLEMS[code],
+            fixable: FIXABLE_ROOM_PROBLEMS.has(code), more: 0,
+          })
+        }
+      }
+      return [...items.values()]
+    }
+    const byCapacity = (a, b) => a[0].capacity - b[0].capacity
+    const fixable = collapse(rejected.filter((x) => FIXABLE_ROOM_PROBLEMS.has(x[1])).sort(byCapacity), limit)
+    if (fixable.length) return fixable
+    const other = collapse(rejected.filter((x) => x[1] !== 'capacity').sort(byCapacity), limit - 1)
+    const biggest = rejected.filter((x) => x[1] === 'capacity').sort((a, b) => b[0].capacity - a[0].capacity)
+    return [...other, ...collapse(biggest, limit - other.length)]
+  }
+
   const applyTeacherConstraint = (slots, teacherId) => {
     const tc = tcMap.get(teacherId)
-    if (!tc || (tc.blockedDays.size === 0 && tc.allowedPairs.size === 0)) return slots
-    return slots.filter((s) => {
-      if (tc.blockedDays.has(dayOf(s))) return false
-      if (tc.allowedPairs.size > 0 && !tc.allowedPairs.has(pairOf(s))) return false
-      return true
-    })
+    if (!tc || (tc.blocked.size === 0 && tc.allowed.size === 0)) return slots
+    return slots.filter((s) => !tc.blocked.has(dayOf(s)) && (tc.allowed.size === 0 || tc.allowed.has(pairOf(s))))
   }
 
   const events = []
-  const infeasible = [] // nomzod xonasi/slot yo'q — ma'lumot muammosi
+  const infeasible = []
+  const groupStart = new Map()
+  const groupEnd = new Map()
   let eid = 0
 
-  for (const w of workloads) {
-    // Potok: bitta yuklama bir nechta guruhga bog'langan bo'lishi mumkin —
-    // hammasi BIRGA bitta darsda ishtirok etadi (fan soati guruhlar soniga ko'paytirilmaydi)
-    const wgroups = w.groups.map((x) => x.group).filter(Boolean)
-    const groupIds = w.groups.map((x) => x.groupId)
-    // Shu potokdagi guruh(lar)ga VA/YOKI shu o'qituvchiga VA/YOKI shu FANGA maxsus
-    // biriktirilgan xona(lar) — bo'lsa, jadval tuzishda ustuvor (barchasi tekshiriladi,
-    // natijalar birlashtiriladi)
-    const assignedRooms = [...new Set([
+  // Yuklamaning bitta qismi (odatda butun sinf; bo'lingan seminarda — yarmi) uchun eventlar
+  const addEvents = (w, members, part) => {
+    // Potok: yuklama bir nechta guruhga — hammasi BIRGA bitta darsda (soat guruhlar soniga ko'paytirilmaydi)
+    const wgroups = members.map((x) => x.group).filter(Boolean)
+    const groupIds = members.map((x) => x.groupId)
+    const teacherId = w.teacherId, subjectId = w.subjectId
+    const assignedRooms = uniq([
       ...groupIds.flatMap((gid) => [...(groupRoomMap.get(gid) || [])]),
-      ...(teacherRoomMap.get(w.teacherId) || []),
-      ...(subjectRoomMap.get(w.subjectId) || []),
-    ])]
-    // QAT'IY biriktirish (exclusive): guruh(lar) faqat shu xona(lar)da dars o'tadi.
-    // Bir nechta guruh bo'lsa — kesishma (hammasiga mos xona). Kesishma bo'sh bo'lsa — ziddiyat.
-    const exSets = groupIds.map((gid) => groupOnlyRoomMap.get(gid)).filter(Boolean)
-    const exclusiveRooms = exSets.length
-      ? [...exSets[0]].filter((rid) => exSets.every((s) => s.has(rid)))
-      : null
+      ...(teacherRoomMap.get(teacherId) || []),
+      ...(subjectRoomMap.get(subjectId) || []),
+    ])
+    const assignedSet = new Set(assignedRooms)
+    // QAT'IY biriktirish: bir nechta guruh bo'lsa — kesishma (bo'sh bo'lsa — ziddiyat)
+    const exSets = groupIds.filter((gid) => groupOnlyRoomMap.has(gid)).map((gid) => groupOnlyRoomMap.get(gid))
+    const exclusiveRooms = exSets.length ? [...exSets[0]].filter((rid) => exSets.every((s) => s.has(rid))) : null
+
+    const first = wgroups[0] || null
+    const firstId = first ? first.id : null
+    const isPotok = groupIds.length > 1
+    // "2 para" qoidasi faqat katta zalga mos (MAIN_HALL_MIN-MAIN_HALL_MAX) potokka — kichigi oddiy xonada
+    const potokSize = wgroups.reduce((s, g) => s + (g.size || 0), 0)
+    const isTwoParaPotok = isPotok && w.weeklyHours === 2 && !subjectRoomMap.has(subjectId)
+      && potokSize >= MAIN_HALL_MIN && potokSize <= MAIN_HALL_MAX
+    // Potok: dars BARCHA guruhlarning juftlik oralig'iga sig'ishi kerak — oraliqlar kesishmasi
+    const memberStarts = wgroups.map((g) => startPairOf(g.id))
+    const memberEnds = wgroups.map((g, i) => endPairOf(g.id, memberStarts[i]))
+    wgroups.forEach((g, i) => { groupStart.set(g.id, memberStarts[i]); groupEnd.set(g.id, memberEnds[i]) })
+    const slotLo = wgroups.length ? Math.max(...memberStarts) : 1
+    const slotHi = wgroups.length ? Math.min(...memberEnds) : PAIRS
+
+    let template = null // yuklamaning birinchi eventi — slot/xona nomzodlari hamma eventlari uchun bir xil
     for (let i = 0; i < (w.weeklyHours || 1); i++) {
+      const start = startPairOf(firstId)
+      const lessonType = w.type || 'Amaliy'
       const ev = {
         id: eid++,
         workloadId: w.id,
         groupIds,
-        teacherId: w.teacherId,
-        subjectId: w.subjectId,
-        type: w.type || 'Amaliy', // Maʼruza / Seminar / Amaliy — haftalik tartib uchun (constraints.js)
+        uniqueGroupIds: uniq(groupIds),
+        teacherId,
+        subjectId,
+        type: lessonType,
+        rank: TYPE_RANK[lessonType] ?? null,
+        single: groupIds.length === 1,
         groupNames: wgroups.map((g) => g.name),
         teacherName: w.teacher?.fullName,
         subjectName: w.subject?.name,
-        course: wgroups[0]?.course ?? 1,
-        startPair: startPairOf(wgroups[0]?.id), // guruhning boshlanish juftligi (constraints.js dayStart uchun)
-        endPair: endPairOf(wgroups[0]?.id, startPairOf(wgroups[0]?.id)), // guruhning tugash juftligi
-        groupSize: wgroups.reduce((s, g) => s + (g.size ?? 0), 0), // barcha guruh talabalari yig'indisi
-        specialtyIds: [...new Set(wgroups.map((g) => g.specialtyId).filter((v) => v != null))],
-        facultyIds: [...new Set(wgroups.map((g) => g.facultyId).filter((v) => v != null))],
+        course: first?.course ?? 1,
+        startPair: start,
+        endPair: endPairOf(firstId, start),
+        groupSize: wgroups.reduce((s, g) => s + (g.size || 0), 0),
+        specialtyIds: uniq(wgroups.map((g) => g.specialtyId).filter((v) => v != null)),
+        facultyIds: uniq(wgroups.map((g) => g.facultyId).filter((v) => v != null)),
         difficulty: w.subject?.difficulty ?? 3,
         assignedRooms,
+        assignedSet,
         slot: -1,
         room: -1,
+        slots: [],
+        rooms: [],
+        roomCapacities: {},
+        reason: null,
+        blockKind: null,
+        suggestions: [],
+        part,
       }
-      ev.slots = applyTeacherConstraint(allowedSlots(ev.startPair, ev.endPair), ev.teacherId) // ruxsat etilgan slotlar
-      // "2 para" POTOK QOIDASI (qat'iy, foydalanuvchi so'rovi bo'yicha): potok (groupIds.length>1)
-      // darsning shu yuklamadagi haftalik soati aynan 2 bo'lsa — FAQAT Dushanba/Seshanba/
-      // Chorshanba (kun indeksi 0,1,2 — DAY_NAMES'ga qarang) kunlariga VA FAQAT asosiy
-      // binodagi Katta zalga qo'yiladi (pastda, candidateRooms'da). FALLBACK YO'Q — mos
-      // joy topilmasa, dars bo'sh (infeasible) qoladi, pastdagi umumiy mexanizm buni
-      // avtomatik aniq sabab bilan ko'rsatadi.
-      // ISTISNO: fanga MAXSUS xona biriktirilgan bo'lsa (masalan Jismoniy tarbiya — sport
-      // zali) — bu qoidaga umuman tegishli emas, chunki u allaqachon o'z maxsus xonasidan
-      // foydalanadi (subjectRoomMap), Katta zal band qilishga hojat yo'q.
-      const isTwoParaPotok = groupIds.length > 1 && w.weeklyHours === 2 && !subjectRoomMap.has(w.subjectId)
+      if (template !== null) {
+        ev.slots = template.slots
+        ev.rooms = template.rooms
+        ev.roomCapacities = template.roomCapacities
+        ev.reason = template.reason
+        ev.blockKind = template.blockKind
+        ev.suggestions = template.suggestions
+        if (ev.reason !== null) infeasible.push(ev)
+        events.push(ev)
+        continue
+      }
+      template = ev
+      if (wgroups.length === 0) {
+        // guruhsiz yuklama — dars hech kimga yozilmaydi, faqat o'qituvchi/xonani band qilardi
+        ev.blockKind = 'no_group'
+        ev.reason = "yuklamaga guruh biriktirilmagan — yuklamani ochib, guruh tanlang"
+        infeasible.push(ev)
+        events.push(ev)
+        continue
+      }
+      ev.slots = applyTeacherConstraint(slotLo <= slotHi ? allowedSlots(slotLo, slotHi) : [], teacherId)
+      // "2 para" POTOK QOIDASI: haftalik 2 soatli potok — FAQAT Dushanba/Seshanba/Chorshanba
+      // va FAQAT asosiy binodagi Katta zal (fallback yo'q)
       if (isTwoParaPotok) ev.slots = ev.slots.filter((s) => dayOf(s) <= 2)
-      // Nomzod xonalar: biriktirilgan xona(lar) oldinda, keyin sig'imi bo'yicha saralanadi —
-      // greedy shulardan birinchi bo'sh topganini tanlaydi. ODATIY (bitta guruh) darsda ENG
-      // KICHIK mos xona afzal (roomFit soft cheklashiga mos, katta xonani behuda band qilmaslik).
-      // POTOK (bir nechta guruh BIRGA, groupIds.length>1) darsda ESA — teskarisi: ENG KATTA
-      // (katta zal) xona afzal — chunki potok guruhlarni BITTA xonaga jamlaydi, shu bilan
-      // ularning ALOHIDA kichik xonalari o'sha vaqt uchun BO'SHAB QOLADI (boshqa, potok
-      // bo'lmagan darslar uchun ishlatiladi) — roomFit bu holatda constraints.js'da
-      // qo'llanilmaydi (groupCost'ga qarang), shu sabab bu ustuvorlik SA davomida ham saqlanadi.
-      const isPotok = groupIds.length > 1
-      const candidateRooms = roomMeta.filter((r) =>
-        roomAllowed(r, ev) && (exclusiveRooms == null || exclusiveRooms.includes(r.id))
+      // Nomzod xonalar: biriktirilganlar oldinda; oddiy darsda ENG KICHIK mos xona, potokda ENG KATTA
+      const candidates = roomMeta.filter((r) =>
+        roomRejection(r, ev) === null
+        && (exclusiveRooms === null || exclusiveRooms.includes(r.id))
         && (!isTwoParaPotok || (r.facultyIds.length === 0 && r.capacity > LARGE_ROOM_CAPACITY)))
-      candidateRooms.sort((a, b) => {
-        const aA = assignedRooms.includes(a.id) ? 0 : 1, bA = assignedRooms.includes(b.id) ? 0 : 1
+      candidates.sort((a, b) => {
+        const aA = assignedSet.has(a.id) ? 0 : 1, bA = assignedSet.has(b.id) ? 0 : 1
         if (aA !== bA) return aA - bA
         return isPotok ? b.capacity - a.capacity : a.capacity - b.capacity
       })
-      ev.rooms = candidateRooms.map((r) => r.id)
-      ev.roomCapacities = Object.fromEntries(candidateRooms.map((r) => [r.id, r.capacity]))
+      ev.rooms = candidates.map((r) => r.id)
+      ev.roomCapacities = Object.fromEntries(candidates.map((r) => [r.id, r.capacity]))
+
       // Nega joylab bo'lmaydi — aniq sabab (UI'da ko'rsatiladi)
       if (ev.slots.length === 0) {
-        ev.reason = isTwoParaPotok
-          ? "2 para potok qoidasi: Dushanba/Seshanba/Chorshanba kunlarida (yoki o'qituvchining istisnolari tufayli) bo'sh vaqt qolmadi"
-          : "o'qituvchining istisnolari (bloklangan kunlar / faqat ayrim juftliklar) tufayli bo'sh vaqt qolmadi"
+        ev.blockKind = slotLo > slotHi ? 'potok_range' : 'time'
+        if (slotLo > slotHi) {
+          ev.reason = "potokdagi guruhlarning juftlik oraliqlari kesishmaydi — birga o'tiladigan dars uchun umumiy vaqt yo'q"
+        } else if (isTwoParaPotok) {
+          ev.reason = "2 para potok qoidasi: Dushanba/Seshanba/Chorshanba kunlarida (yoki o'qituvchining istisnolari tufayli) bo'sh vaqt qolmadi"
+        } else {
+          ev.reason = "o'qituvchining istisnolari (bloklangan kunlar / faqat ayrim juftliklar) tufayli bo'sh vaqt qolmadi"
+        }
         infeasible.push(ev)
       } else if (ev.rooms.length === 0) {
+        ev.blockKind = isTwoParaPotok ? 'two_para' : 'room'
+        ev.suggestions = roomSuggestions(ev, exclusiveRooms, isTwoParaPotok)
         const fitByCap = roomMeta.filter((r) => r.capacity >= ev.groupSize)
         const fitByFaculty = fitByCap.filter((r) => r.facultyIds.length === 0 || r.facultyIds.some((fid) => ev.facultyIds.includes(fid)))
         if (isTwoParaPotok) {
           ev.reason = "2 para potok qoidasi: faqat asosiy binodagi Katta zalga qo'yiladi (qat'iy), lekin mos/bo'sh Katta zal topilmadi"
-        } else if (exclusiveRooms != null) {
+        } else if (exclusiveRooms !== null) {
           const names = exclusiveRooms.map((rid) => roomMeta.find((r) => r.id === rid)?.name).filter(Boolean)
           ev.reason = exclusiveRooms.length === 0
-            ? 'potokdagi guruhlar har xil xonaga QAT\'IY biriktirilgan — bitta darsga umumiy xona yo\'q'
+            ? "potokdagi guruhlar har xil xonaga QAT'IY biriktirilgan — bitta darsga umumiy xona yo'q"
             : `guruh FAQAT "${names.join(', ')}" xonasiga biriktirilgan, lekin u sig'maydi yoki band (${ev.groupSize} kishi)`
         } else if (fitByCap.length === 0) {
           const maxCap = roomMeta.reduce((m, r) => Math.max(m, r.capacity), 0)
           ev.reason = `guruh ${ev.groupSize} kishilik — sig'imi yetarli xona yo'q (eng katta xona ${maxCap} o'rin)`
         } else if (fitByFaculty.length === 0) {
           ev.reason = "fakultet binosida (yoki asosiy binoda) sig'imi mos xona yo'q — boshqa fakultet binosidan foydalanib bo'lmaydi"
-        } else if (subjectRoomMap.has(ev.subjectId)
+        } else if (subjectRoomMap.has(subjectId)
           && fitByFaculty.every((r) => r.capacity > LARGE_ROOM_CAPACITY && r.facultyIds.length === 0)) {
           ev.reason = "bu fanga maxsus xona biriktirilgan (masalan sport zali) — asosiy binodagi katta zaldan foydalanmaydi, lekin o'ziga tegishli xona yetarli emas yoki band"
         } else if (fitByFaculty.every((r) => r.capacity > LARGE_ROOM_CAPACITY)) {
-          ev.reason = `guruh ${ev.groupSize} kishilik — mos sig'imli xonalarning barchasi katta zal: asosiy binoda faqat ${MAIN_HALL_MIN}-${MAIN_HALL_MAX} talabali potok (tur — Ma'ruza/Amaliy/Seminar — farqi yo'q), fakultet binosida faqat Ma'ruzada ${LARGE_ROOM_CAPACITY}+ talabaga ajratiladi`
+          if (ev.groupSize < MAIN_HALL_MIN) ev.blockKind = 'between' // oddiy xonaga ko'p, katta zalga kam
+          ev.reason = `${ev.groupSize} talaba — oddiy xonalarga sig'maydi, katta zallar esa faqat `
+            + `${MAIN_HALL_MIN}-${MAIN_HALL_MAX} talabali sinf uchun (talaba kam bo'lsa katta zal band qilinmaydi)`
         } else {
           ev.reason = "faqat maxsus xonalar mos keladi, lekin bu guruh/o'qituvchi/yo'nalish/fanga kirish ruxsati berilmagan"
         }
@@ -273,9 +334,12 @@ export async function loadData(prisma, semester = 1, opts = {}) {
     }
   }
 
-  // Indekslar — delta-baholash uchun (guruh/o'qituvchi bo'yicha eventlar). Potok event'i
-  // HAR BIR o'ziga tegishli guruh ro'yxatiga qo'shiladi — shu bilan groupCost/anneal
-  // barcha guruhlarga birdek ta'sirini avtomatik hisoblaydi.
+  for (const w of workloads) {
+    const parts = lessonParts(w.groups || [], w.type || 'Amaliy', memberSize)
+    parts.forEach((members, i) => addEvents(w, members, parts.length > 1 ? `${i + 1}/${parts.length}` : null))
+  }
+
+  // Indekslar — delta-baholash uchun. Potok event'i HAR BIR guruh ro'yxatiga qo'shiladi.
   const byGroup = new Map(), byTeacher = new Map()
   for (const ev of events) {
     if (!byTeacher.has(ev.teacherId)) byTeacher.set(ev.teacherId, [])
@@ -286,5 +350,26 @@ export async function loadData(prisma, semester = 1, opts = {}) {
     }
   }
 
-  return { events, byGroup, byTeacher, rooms: roomMeta, infeasible, semester, groupStartPairs }
+  return { events, byGroup, byTeacher, rooms: roomMeta, infeasible, semester, groupStartPairs, groupStart, groupEnd }
+}
+
+// DB'dan (arxivlanmagan, shu semestr) yuklamalar, xonalar va istisnolarni o'qib kontekst tuzadi.
+export async function loadData(prisma, semester = 1, opts = {}) {
+  const { groupStartPairs = {}, groupEndPairs = {} } = opts
+  const [workloads, rooms, teacherConstraints] = await Promise.all([
+    prisma.workload.findMany({
+      where: { semester, archived: false },
+      include: { groups: { include: { group: true }, orderBy: { groupId: 'asc' } }, teacher: true, subject: true },
+      orderBy: { id: 'asc' },
+    }),
+    prisma.room.findMany({
+      include: {
+        permissions: { orderBy: { id: 'asc' } },
+        building: { include: { faculties: { orderBy: { id: 'asc' } } } },
+      },
+      orderBy: { id: 'asc' },
+    }),
+    prisma.teacherConstraint.findMany({ orderBy: { id: 'asc' } }),
+  ])
+  return buildContext(workloads, rooms, teacherConstraints, semester, groupStartPairs, groupEndPairs)
 }

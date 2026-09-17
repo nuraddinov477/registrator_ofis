@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { BookOpen, FileText, UserCog, ShieldCheck, Plus, Pencil, Trash2, Archive, RotateCcw } from 'lucide-react'
-import { db, useCollection, useIsLoading, useLoadFailed, retry } from '../data/store'
+import { useSearchParams } from 'react-router-dom'
+import { BookOpen, FileText, UserCog, ShieldCheck, Plus, Pencil, Trash2, Archive, RotateCcw, X } from 'lucide-react'
+import { db, useCollection, useIsLoading, useLoadFailed, useHasLoaded, retry } from '../data/store'
 import { api, auth } from '../api/client'
 import { canWrite, assignableRoles, writableSections, visibleSections, SECTION_LABELS } from '../lib/access'
 import { PageHeader, SearchBar, Table, Modal, Field, Badge, SearchableSelect, DataState } from '../components/ui'
@@ -24,6 +25,13 @@ export function Loads() {
   const [archived, setArchived] = useState([]) // arxivdagi yuklamalar (kerak bo'lganda yuklanadi)
   const [showArchived, setShowArchived] = useState(false)
   const writable = canWrite('loads')
+  const ready = useHasLoaded('loads')
+  // Tashxis havolalaridan: ?group= / ?teacher= / ?workload= — ro'yxatni shu bo'yicha toraytiradi,
+  // ?edit=<id> — yuklamani tahrirlash oynasida ochadi (so'ng ?workload= ga aylanadi)
+  const [params, setParams] = useSearchParams()
+  const focus = { group: Number(params.get('group')) || null, teacher: Number(params.get('teacher')) || null, workload: Number(params.get('workload')) || null }
+  const hasFocus = Object.values(focus).some(Boolean)
+  const clearFocus = (key) => { const next = new URLSearchParams(params); next.delete(key); setParams(next, { replace: true }) }
 
   const loadArchived = async () => {
     try { setArchived((await api('/workloads?all=1')).filter((w) => w.archived)) } catch { /* jim */ }
@@ -46,6 +54,17 @@ export function Loads() {
     if (!confirm("Bu yuklama arxivga ko'chirilsinmi? Butunlay o'chmaydi, keyin tiklash mumkin.")) return
     try { await db.remove('loads', l.id); if (showArchived) loadArchived() } catch (e) { alert(e.message || "Arxivlashda xatolik") }
   }
+  useEffect(() => {
+    const id = Number(params.get('edit'))
+    if (!id || !ready) return
+    const row = loads.find((l) => l.id === id)
+    if (row && writable) openEdit(row)
+    const next = new URLSearchParams(params)
+    next.delete('edit')
+    next.set('workload', String(id))
+    setParams(next, { replace: true })
+  }, [params, ready, loads])
+
   const restore = async (l) => {
     try { await api(`/workloads/${l.id}/restore`, { method: 'POST' }); retry('loads'); loadArchived() } catch (e) { alert(e.message || "Tiklashda xatolik") }
   }
@@ -63,9 +82,18 @@ export function Loads() {
   // Qidiruv YOZILAYOTGANDA fakultet filtri chetlab o'tiladi (boshqa fakultet o'qituvchisi
   // ham qidiruv natijasida chiqishi kerak) — filtr faqat qidiruv BO'SH bo'lganda (oddiy
   // ko'rib chiqishda) qo'llaniladi.
-  const matchesFaculty = (l) => !fFaculty || q || String(teacherFacultyId(l.teacherId)) === String(fFaculty)
-  const filteredLoads = loads.filter((l) => searchText(l).includes(q.toLowerCase()) && matchesFaculty(l))
-  const filteredArchived = showArchived ? archived.filter((l) => searchText(l).includes(q.toLowerCase()) && matchesFaculty(l)) : []
+  const matchesFaculty = (l) => !fFaculty || q || hasFocus || String(teacherFacultyId(l.teacherId)) === String(fFaculty)
+  const matchesFocus = (l) => (!focus.workload || l.id === focus.workload)
+    && (!focus.teacher || l.teacherId === focus.teacher)
+    && (!focus.group || (l.groups || []).some((x) => x.groupId === focus.group))
+  const visible = (l) => searchText(l).includes(q.toLowerCase()) && matchesFaculty(l) && matchesFocus(l)
+  const filteredLoads = loads.filter(visible)
+  const filteredArchived = showArchived ? archived.filter(visible) : []
+  const focusChips = [
+    focus.group && { key: 'group', label: `Guruh: ${nm('groups', focus.group)}` },
+    focus.teacher && { key: 'teacher', label: `O'qituvchi: ${nm('teachers', focus.teacher)}` },
+    focus.workload && { key: 'workload', label: `Yuklama #${focus.workload}` },
+  ].filter(Boolean)
   const displayRows = [...filteredLoads, ...filteredArchived]
   const typeColor = (t) => (t === 'Maʼruza' ? 'blue' : t === 'Seminar' ? 'amber' : 'gray')
 
@@ -112,6 +140,11 @@ export function Loads() {
         <td className="px-4 py-3">
           <div className="flex flex-wrap items-center gap-1">
             <Badge color={typeColor(l.type)}>{l.type || 'Amaliy'}</Badge>
+            {l.type === 'Seminar' && lgroups.length > 1 && totalStudents > 60 && (
+              <span title="Seminar sinfi oddiy xonaga sig'maydi — jadvalda ikki yarmiga bo'linib, har biri alohida o'tadi">
+                <Badge color="blue">2 ga bo'linadi</Badge>
+              </span>
+            )}
             {l.archived && <Badge color="gray">Arxiv</Badge>}
           </div>
         </td>
@@ -154,6 +187,12 @@ export function Loads() {
         {fFaculty && (
           <button className="text-sm text-slate-500 hover:text-brand" onClick={() => setFFaculty('')}>Tozalash</button>
         )}
+        {focusChips.map((c) => (
+          <span key={c.key} className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2.5 py-1 text-xs font-medium text-brand">
+            {c.label}
+            <button onClick={() => clearFocus(c.key)} title="Filtrni olib tashlash" className="rounded-full hover:bg-brand/20"><X size={12} /></button>
+          </span>
+        ))}
       </div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800/60">

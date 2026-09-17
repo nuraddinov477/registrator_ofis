@@ -15,9 +15,18 @@ const Tile = ({ label, value, icon: Icon, color }) => (
   </div>
 )
 
-const fitsBadge = (fits) => fits
-  ? <Badge color="green">Katta zalga mos</Badge>
-  : <Badge color="amber">Mos emas</Badge>
+// Potok qayerda o'tadi (jadval tuzish qoidalari bilan bir xil)
+const PLACEMENT = {
+  hall: { color: 'green', label: 'Katta zalda' },
+  split: { color: 'blue', label: 'Ikkiga bo\'linadi' },
+  regular: { color: 'gray', label: 'Oddiy xonada' },
+  between: { color: 'amber', label: 'Hech qayerga sig\'maydi' },
+  too_big: { color: 'red', label: 'Katta zalga sig\'maydi' },
+}
+const placementBadge = (e) => {
+  const p = PLACEMENT[e.placement] || (e.fits ? PLACEMENT.hall : PLACEMENT.between)
+  return <Badge color={p.color}>{p.label}</Badge>
+}
 
 // Potok (bir nechta guruh birga o'qiydigan) fanlar bo'yicha hisob-kitob — FAQAT mavjud
 // Yuklamaga asoslanadi (tavsiya/taxmin YO'Q): mavjud potoklar va ularning Katta zalga
@@ -43,7 +52,7 @@ export default function Potok() {
   return (
     <div>
       <PageHeader title="Potok fanlar hisob-kitobi" icon={Layers}
-        subtitle="Bir nechta guruh birga o'qiydigan (potok) fanlar va ularning Katta zalga (65-105 talaba) mosligi — mavjud yuklamaga asosan" />
+        subtitle="Bir nechta guruh birga o'qiydigan (potok) fanlar va ular qayerda o'tishi: katta zal faqat 65-105 talabali sinfga, katta seminar sinfi ikkiga bo'linadi — mavjud yuklamaga asosan" />
 
       <div className="mb-4 flex items-center gap-2">
         <span className="text-sm text-slate-500 dark:text-slate-400">Semestr:</span>
@@ -81,7 +90,7 @@ export default function Potok() {
                         <span className="font-medium text-slate-800 dark:text-slate-100">{e.subject}</span>
                         <span className="ml-2 text-xs text-slate-400">{e.teacher} · {e.type} · {e.weeklyHours} soat/hafta</span>
                       </div>
-                      {fitsBadge(e.fits)}
+                      {placementBadge(e)}
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {e.groups.map((g) => <Badge key={g.id} color="gray">{g.name} ({g.size})</Badge>)}

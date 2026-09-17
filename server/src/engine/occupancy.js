@@ -45,6 +45,14 @@ export class Occupancy {
     this._dec(this.room, ev.room, ev.slot)
   }
 
+  // Joylangan dars nechta to'qnashuvda qatnashadi (shu slotdagi boshqa darslar bilan)
+  conflictsOf(ev) {
+    const slot = ev.slot
+    let count = this.teacher.get(ev.teacherId)[slot] - 1 + this.room.get(ev.room)[slot] - 1
+    for (const gid of ev.groupIds) count += this.group.get(gid)[slot] - 1
+    return count
+  }
+
   // Berilgan slot resurs uchun bo'shmi? (event qo'yilmagan deb hisoblab)
   groupFree(groupId, slot) { return (this.group.get(groupId)?.[slot] ?? 0) === 0 }
   teacherFree(teacherId, slot) { return (this.teacher.get(teacherId)?.[slot] ?? 0) === 0 }

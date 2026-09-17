@@ -1,130 +1,263 @@
-import { groupCost, teacherCost, totalSoft } from './constraints.js'
-import { dayOf, pairOf } from './timeslots.js'
+import { groupEval, teacherCost, totalSoft } from './constraints.js'
+import { PAIRS } from './timeslots.js'
 
-const randInt = (n) => (Math.random() * n) | 0
+// Simulated Annealing — yumshoq jarimani minimallashtiradi, qattiq konfliktlarni nolga tushiradi.
+// Har harakatda faqat ta'sirlangan guruh(lar) va o'qituvchining jarimasi qayta hisoblanadi (delta-baholash).
+// strict=true — to'qnashuvsiz jadvalni saqlagan holda (to'qnashuv yaratadigan harakat darhol rad etiladi)
+// faqat oynalar va yumshoq jarimani kamaytiradi; joylanmagan darslarga tegmaydi.
 
-// To'liq TASODIFIY slot tanlash katta masalada (yuzlab guruh) "oyna"ni to'ldiruvchi
-// joyni deyarli hech qachon duch kelmaydi — millionlab iteratsiyada ham. Shu sabab
-// ev.slots ichidan berilgan "band juftliklar" (busyByDay) UCHUN "jozibali" (band
-// kundagi bo'shliqni to'ldiradigan yoki mavjud blokni davom ettiradigan) slotlarni
-// ajratib beramiz.
-function attractiveFor(ev, busyByDay) {
-  if (busyByDay.size === 0) return null
+const busyDays = (events, excludeId) => {
+  const busy = new Map() // kun → Set(juftlik 1..6)
+  for (const e of events) {
+    if (e.id === excludeId || e.slot < 0) continue
+    const day = Math.floor(e.slot / PAIRS)
+    if (!busy.has(day)) busy.set(day, new Set())
+    busy.get(day).add((e.slot % PAIRS) + 1)
+  }
+  return busy
+}
+
+// Band kundagi oynani to'ldiradigan yoki mavjud blokni davom ettiradigan slotlar
+const attractiveFor = (ev, busy) => {
+  if (busy.size === 0) return null
+  const bounds = new Map()
+  for (const [day, pairs] of busy) bounds.set(day, [Math.min(...pairs), Math.max(...pairs), pairs])
   const attractive = []
   for (const slot of ev.slots) {
-    const d = dayOf(slot), p = pairOf(slot)
-    const pairs = busyByDay.get(d)
-    if (!pairs || pairs.size === 0) continue
-    const min = Math.min(...pairs), max = Math.max(...pairs)
-    // band oralig'idagi bo'sh juftlik (oynani to'ldiradi) YOKI blokka tutash (davom ettiradi)
-    if ((p > min && p < max && !pairs.has(p)) || p === min - 1 || p === max + 1) {
-      attractive.push(slot)
-    }
+    const bound = bounds.get(Math.floor(slot / PAIRS))
+    if (!bound) continue
+    const [lo, hi, pairs] = bound
+    const p = (slot % PAIRS) + 1
+    if ((lo < p && p < hi && !pairs.has(p)) || p === lo - 1 || p === hi + 1) attractive.push(slot)
   }
   return attractive.length ? attractive : null
 }
 
-const busyDaysOf = (events, excludeId) => {
-  const m = new Map() // day -> Set(pair)
-  for (const e of events) {
-    if (e.id === excludeId || e.slot < 0) continue
-    const d = dayOf(e.slot), p = pairOf(e.slot)
-    if (!m.has(d)) m.set(d, new Set())
-    m.get(d).add(p)
-  }
-  return m
-}
-
-// Ustuvorlik: AVVAL guruh (talaba) oynasini to'ldiradigan joy qidiriladi — topilsa
-// shu ishlatiladi. Topilmasa (guruh hali bo'sh yoki mos joy yo'q), O'QITUVCHI oynasini
-// to'ldiradigan joy qidiriladi. Ikkisi ham bo'lmasa — null (chaqiruvchi tasodifiyga o'tadi).
-function attractiveSlots(ev, ctx) {
+// Ustuvorlik: AVVAL guruh (talaba) oynasi, keyin o'qituvchi oynasi. Ikkisi ham bo'lmasa — null
+const attractiveSlots = (ev, ctx) => {
   for (const gid of ev.groupIds) {
-    const busy = busyDaysOf(ctx.byGroup.get(gid) || [], ev.id)
-    const found = attractiveFor(ev, busy)
+    const found = attractiveFor(ev, busyDays(ctx.byGroup.get(gid) || [], ev.id))
     if (found) return found
   }
-  const tBusy = busyDaysOf(ctx.byTeacher.get(ev.teacherId) || [], ev.id)
-  return attractiveFor(ev, tBusy)
+  return attractiveFor(ev, busyDays(ctx.byTeacher.get(ev.teacherId) || [], ev.id))
 }
 
-// Simulated Annealing — yumshoq jarimani minimallashtiradi, qolgan qattiq
-// konfliktlarni nolga tushiradi. Har harakatda faqat ta'sirlangan guruh va
-// o'qituvchining jarimasi qayta hisoblanadi (delta-baholash) — bu masshtab kaliti.
+const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i])
+
+// Qat'iy rejimdagi almashtirish uchun sherik: aynan shu guruh(lar)ning boshqa vaqtdagi darsi.
+// Guruhlar bir xil bo'lgani uchun almashtirish guruh bandligini o'zgartirmaydi — faqat o'qituvchi va
+// xonalar tekshiriladi (bitta darsni surish mumkin bo'lmagan oynalarni shunday yopish mumkin).
+const swapPartner = (ev, byGroup, rand) => {
+  const candidates = ev.uniqueGroupIds.length ? byGroup.get(ev.uniqueGroupIds[0]) : null
+  if (!candidates || !candidates.length) return null
+  for (let i = 0; i < 3; i++) {
+    const other = candidates[Math.floor(rand() * candidates.length)]
+    if (other !== ev && other.slot >= 0 && other.slot !== ev.slot && other.rooms.length
+      && sameList(other.uniqueGroupIds, ev.uniqueGroupIds)
+      && other.slots.includes(ev.slot) && ev.slots.includes(other.slot)) return other
+  }
+  return null
+}
+
+// [to'qnashuvlar, oynalar, yumshoq] — leksikografik
+const keyLess = (a, b) => (a[0] !== b[0] ? a[0] < b[0] : a[1] !== b[1] ? a[1] < b[1] : a[2] < b[2])
+
 export function anneal(ctx, occ, opts = {}) {
-  const n = ctx.events.length
+  const events = ctx.events
+  const n = events.length
   const {
-    hardWeight = 1000,
     maxMs = 5000,
+    hardWeight = 1000,
     maxIters = Math.min(2_000_000, Math.max(50_000, n * 3000)),
     T0 = 2.0,
     Tmin = 0.01,
+    rand = Math.random,
+    strict = false,
   } = opts
-
   const alpha = Math.pow(Tmin / T0, 1 / maxIters) // geometrik sovish
 
+  const { byGroup, byTeacher, groupStart } = ctx
+  // Har guruhning [jarima, oynalar] va o'qituvchining jarimasi keshlanadi — "eski" qiymatni qayta
+  // hisoblash shart emas (u faqat o'sha entity eventlariga bog'liq, shu sabab kesh har doim to'g'ri)
+  const groupCache = new Map()
+  for (const [gid, evs] of byGroup) groupCache.set(gid, groupEval(evs, groupStart.get(gid) ?? null))
+  const teacherCache = new Map()
+  for (const [tid, evs] of byTeacher) teacherCache.set(tid, teacherCost(evs))
   let currentSoft = totalSoft(ctx)
-  const cost = () => occ.hard * hardWeight + currentSoft
+  // Qattiq buzilish = to'qnashuvlar (occ.hard) + guruhlardagi oynalar (oyna QAT'IY taqiqlangan)
+  let gapTotal = 0
+  for (const [, gaps] of groupCache.values()) gapTotal += gaps
 
-  // Eng yaxshi yechim snapshot'i (event.id bo'yicha indekslangan)
-  const bestSlot = new Int16Array(n)
-  const bestRoom = new Int32Array(n)
-  const snapshot = () => { for (const e of ctx.events) { bestSlot[e.id] = e.slot; bestRoom[e.id] = e.room } }
-  const restore = () => {
-    for (const e of ctx.events) { e.slot = bestSlot[e.id]; e.room = bestRoom[e.id] }
+  const bestSlot = events.map((e) => e.slot)
+  const bestRoom = events.map((e) => e.room)
+  // Ustuvorlik qat'iy tartibda: to'qnashuvlar → oynalar → yumshoq jarima. To'qnashuv oynadan ANCHA
+  // og'ir — aks holda optimallashtiruvchi oynani to'qnashuvga "almashtirib" yuborishi mumkin.
+  const conflictWeight = hardWeight * 100
+  let bestKey = [occ.hard, gapTotal, currentSoft]
+  let moved = [] // oxirgi snapshot'dan beri qabul qilingan harakatlar (event.id == indeks)
+
+  const started = performance.now()
+  let T = T0
+  let accepted = 0
+  let iters = 0
+  let gapGroups = [] // oynasi bor guruhlar (har 1024 iteratsiyada yangilanadi)
+
+  const firstFreeRoom = (ev, slot) => ev.rooms.find((r) => occ.roomFree(r, slot)) ?? null
+  const evalGroups = (gids) => gids.map((gid) => groupEval(byGroup.get(gid), groupStart.get(gid) ?? null))
+  const commitBest = () => {
+    const currentKey = [occ.hard, gapTotal, currentSoft]
+    if (keyLess(currentKey, bestKey)) {
+      bestKey = currentKey
+      for (const eid of moved) {
+        bestSlot[eid] = events[eid].slot
+        bestRoom[eid] = events[eid].room
+      }
+      moved = []
+    }
   }
-  let bestHard = occ.hard, bestSoft = currentSoft
-  snapshot()
 
-  const t0 = Date.now()
-  let T = T0, iters = 0, accepted = 0
+  // Ikki darsning vaqtini almashtirish (qat'iy rejim) — qabul qilinmasa yoki mumkin bo'lmasa, holat tiklanadi
+  const trySwap = (a, b) => {
+    const groups = a.uniqueGroupIds
+    const teachers = [...new Set([a.teacherId, b.teacherId])]
+    const oldGroups = groups.map((gid) => groupCache.get(gid))
+    const oldLocal = oldGroups.reduce((s, [cost]) => s + cost, 0) + teachers.reduce((s, t) => s + teacherCache.get(t), 0)
+    const oldGaps = oldGroups.reduce((s, [, gaps]) => s + gaps, 0)
+    const slotA = a.slot, roomA = a.room, slotB = b.slot, roomB = b.room
+    occ.remove(a)
+    occ.remove(b)
+    const restore = () => {
+      a.slot = slotA; a.room = roomA; b.slot = slotB; b.room = roomB
+      occ.place(a)
+      occ.place(b)
+    }
+    if (!(occ.teacherFree(a.teacherId, slotB) && occ.teacherFree(b.teacherId, slotA)
+      && a.groupIds.every((g) => occ.groupFree(g, slotA) && occ.groupFree(g, slotB)))) {
+      restore()
+      return
+    }
+    const newRoomA = firstFreeRoom(a, slotB)
+    if (newRoomA === null) { restore(); return }
+    a.slot = slotB; a.room = newRoomA
+    occ.place(a)
+    const newRoomB = firstFreeRoom(b, slotA)
+    if (newRoomB === null) { occ.remove(a); restore(); return }
+    b.slot = slotA; b.room = newRoomB
+    occ.place(b)
 
-  for (; iters < maxIters; iters++) {
-    if ((iters & 1023) === 0 && Date.now() - t0 > maxMs) break // vaqt byudjeti
+    const newGroups = evalGroups(groups)
+    const newTeachers = teachers.map((t) => [t, teacherCost(byTeacher.get(t))])
+    const newGaps = newGroups.reduce((s, [, gaps]) => s + gaps, 0)
+    const deltaSoft = newGroups.reduce((s, [cost]) => s + cost, 0) + newTeachers.reduce((s, [, c]) => s + c, 0) - oldLocal
+    const delta = (newGaps - oldGaps) * hardWeight + deltaSoft
+    if (delta <= 0 || rand() < Math.exp(-delta / T)) {
+      currentSoft += deltaSoft
+      gapTotal += newGaps - oldGaps
+      accepted++
+      groups.forEach((gid, i) => groupCache.set(gid, newGroups[i]))
+      for (const [t, c] of newTeachers) teacherCache.set(t, c)
+      moved.push(a.id, b.id)
+      commitBest()
+    } else {
+      occ.remove(a)
+      occ.remove(b)
+      restore()
+    }
+  }
 
-    const ev = ctx.events[randInt(n)]
-    if (ev.rooms.length === 0 || ev.slots.length === 0) continue
+  while (iters < maxIters) {
+    if ((iters & 1023) === 0) {
+      if (performance.now() - started > maxMs) break // vaqt byudjeti
+      gapGroups = []
+      for (const [gid, [, gaps]] of groupCache) if (gaps > 0) gapGroups.push(byGroup.get(gid))
+    }
 
-    // Potok: shu event bir nechta guruhga tegishli bo'lishi mumkin — ko'chirilsa
-    // BARCHA shu guruhlarning narxi bir vaqtda o'zgaradi, hammasi yig'indiga qo'shiladi
-    const groupLists = ev.groupIds.map((gid) => ctx.byGroup.get(gid))
-    const t = ctx.byTeacher.get(ev.teacherId)
-    const oldLocal = groupLists.reduce((s, g) => s + groupCost(g), 0) + teacherCost(t)
-    const oldHard = occ.hard
+    // Yarim holatda — oynasi bor guruhning darsi (jozibali slot aynan shu oynani yopishga urinadi)
+    let ev
+    if (gapGroups.length && rand() < 0.5) {
+      const groupEvents = gapGroups[Math.floor(rand() * gapGroups.length)]
+      ev = groupEvents[Math.floor(rand() * groupEvents.length)]
+    } else {
+      ev = events[Math.floor(rand() * n)]
+    }
+    if (!ev.rooms.length || !ev.slots.length || (strict && ev.slot < 0)) { iters++; continue }
+    if (strict && rand() < 0.35) {
+      const partner = swapPartner(ev, byGroup, rand)
+      if (partner !== null) {
+        trySwap(ev, partner)
+        T = Math.max(Tmin, T * alpha)
+        iters++
+        continue
+      }
+    }
+
+    // Potok: ko'chirilsa BARCHA guruhlarning narxi bir vaqtda o'zgaradi
+    const groupIds = ev.uniqueGroupIds
+    const oldGroups = groupIds.map((gid) => groupCache.get(gid))
+    const oldLocal = oldGroups.reduce((s, [cost]) => s + cost, 0) + teacherCache.get(ev.teacherId)
+    const oldGaps = oldGroups.reduce((s, [, gaps]) => s + gaps, 0)
+    const oldConflicts = occ.hard
     const oldSlot = ev.slot, oldRoom = ev.room
 
-    // qo'shni yechim: yangi slot + xona. ~90% holatda "jozibali" (oyna to'ldiruvchi/
-    // blok davom ettiruvchi — avval guruh, keyin o'qituvchi) slotlar orasidan, aks
-    // holda to'liq tasodifiy (lokal optimumga qotib qolmaslik uchun ozgina saqlanadi).
+    // Qo'shni yechim: ~90% "jozibali" slotlar orasidan, aks holda to'liq tasodifiy
     occ.remove(ev)
-    const smart = Math.random() < 0.9 ? attractiveSlots(ev, ctx) : null
-    const slotPool = smart || ev.slots
-    ev.slot = slotPool[randInt(slotPool.length)]
-    ev.room = ev.rooms[randInt(ev.rooms.length)]
+    const smart = rand() < 0.9 ? attractiveSlots(ev, ctx) : null
+    const pool = smart || ev.slots
+    ev.slot = pool[Math.floor(rand() * pool.length)]
+    if (strict) {
+      // qat'iy rejim: guruh/o'qituvchi band bo'lsa yoki bo'sh xona bo'lmasa — harakat yo'q
+      let room = null
+      if (occ.teacherFree(ev.teacherId, ev.slot) && ev.groupIds.every((g) => occ.groupFree(g, ev.slot))) {
+        room = firstFreeRoom(ev, ev.slot)
+      }
+      if (room === null) {
+        ev.slot = oldSlot
+        ev.room = oldRoom
+        occ.place(ev)
+        T = Math.max(Tmin, T * alpha)
+        iters++
+        continue
+      }
+      ev.room = room
+    } else {
+      ev.room = ev.rooms[Math.floor(rand() * ev.rooms.length)]
+    }
     occ.place(ev)
 
-    const newLocal = groupLists.reduce((s, g) => s + groupCost(g), 0) + teacherCost(t)
-    const deltaSoft = newLocal - oldLocal
-    const delta = (occ.hard - oldHard) * hardWeight + deltaSoft
+    const newGroups = evalGroups(groupIds)
+    const newTeacher = teacherCost(byTeacher.get(ev.teacherId))
+    const newGaps = newGroups.reduce((s, [, gaps]) => s + gaps, 0)
+    const deltaSoft = newGroups.reduce((s, [cost]) => s + cost, 0) + newTeacher - oldLocal
+    const delta = (occ.hard - oldConflicts) * conflictWeight + (newGaps - oldGaps) * hardWeight + deltaSoft
 
-    if (delta <= 0 || Math.random() < Math.exp(-delta / T)) {
+    if (delta <= 0 || rand() < Math.exp(-delta / T)) {
       currentSoft += deltaSoft
+      gapTotal += newGaps - oldGaps
       accepted++
-      // eng yaxshini yangilash (avval qattiq, keyin yumshoq)
-      if (occ.hard < bestHard || (occ.hard === bestHard && currentSoft < bestSoft)) {
-        bestHard = occ.hard; bestSoft = currentSoft; snapshot()
-      }
+      groupIds.forEach((gid, i) => groupCache.set(gid, newGroups[i]))
+      teacherCache.set(ev.teacherId, newTeacher)
+      moved.push(ev.id)
+      // eng yaxshini yangilash — faqat oxirgi snapshot'dan beri ko'chgan eventlar yoziladi
+      commitBest()
     } else {
       // rad — eski holatga qaytaramiz
       occ.remove(ev)
-      ev.slot = oldSlot; ev.room = oldRoom
+      ev.slot = oldSlot
+      ev.room = oldRoom
       occ.place(ev)
     }
 
-    T *= alpha
-    if (T < Tmin) T = Tmin
+    T = Math.max(Tmin, T * alpha)
+    iters++
   }
 
-  restore() // eng yaxshi topilgan yechimni qo'yamiz
-  return { iterations: iters, accepted, bestHard, bestSoft, ms: Date.now() - t0 }
+  for (const e of events) { // eng yaxshi topilgan yechim
+    e.slot = bestSlot[e.id]
+    e.room = bestRoom[e.id]
+  }
+  return {
+    iterations: iters, accepted, bestHard: bestKey[0] + bestKey[1],
+    bestConflicts: bestKey[0], bestGaps: bestKey[1], bestSoft: bestKey[2],
+    ms: Math.round(performance.now() - started),
+  }
 }

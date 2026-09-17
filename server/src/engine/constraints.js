@@ -1,210 +1,206 @@
-import { DAYS, dayOf, pairOf } from './timeslots.js'
+import { DAYS, PAIRS } from './timeslots.js'
 
 // Dars turi tartibi: ma'ruza → seminar → amaliy (talabaga mantiqan avval nazariya,
 // keyin amaliyot). Workload.type / event.type shu qiymatlardan biri (default "Amaliy").
 export const TYPE_RANK = { "Maʼruza": 0, Seminar: 1, Amaliy: 2 }
 
-// Yumshoq cheklash vaznlari (sozlanadigan). Qattiq cheklash Occupancy.hard orqali.
+// Yumshoq cheklash vaznlari. Qattiq cheklashlar: to'qnashuv (Occupancy.hard) va OYNA —
+// kun ichida darslar ORASIDAGI bo'sh juftlik (groupEval ikkinchi qiymati).
 export const WEIGHTS = {
-  // teacherGap/groupGap: KVADRATIK — cost = (haftalik jami oyna juftlik)^2 * vazn (har
-  // ENTITY uchun bitta marta, kun bo'yicha emas). Chiziqli bo'lganda "4 oyna 1 guruhda"
-  // bilan "1 oyna 4 xil guruhda" bir xil jarima olardi — kvadratik esa TO'PLANIB QOLGAN
-  // oynani ancha qattiqroq jazolaydi, shu bilan (butunlay yo'qotib bo'lmasa) oynalarni
-  // KO'P GURUH/O'QITUVCHI orasida TENG taqsimlashga majburlaydi. groupGap > teacherGap —
-  // avval talaba, keyin o'qituvchi oynasi kamaytiriladi/taqsimlanadi. Vazn ATAYIN YUQORI
-  // (qat'iy ustuvorlik so'ralgan) — bitta oyna deyarli har qanday boshqa yumshoq
-  // cheklovdan (subjectSpread'dan tashqari) og'irroq, shu sabab optimallashtiruvchi
-  // oynani yo'qotish uchun boshqa narsalarni qurbon qilishga tayyor turadi.
+  // teacherGap/groupGap: KVADRATIK — (haftalik jami oyna)^2 * vazn, har ENTITY uchun bir marta.
+  // To'planib qolgan oynani qattiqroq jazolab, oynalarni guruh/o'qituvchilar orasida teng taqsimlaydi.
   teacherGap: 20,
   groupGap: 40,
-  // Guruh (talaba) oynasi 1 tadan OSHSA — foydalanuvchi so'rovi bo'yicha ("ko'pi bilan
-  // bitta okno mayli, undan oshmasligi kerak, qat'iy") — har qo'shimcha oyna uchun
-  // ALOHIDA, CHIZIQLI (kvadratik EMAS — hardWeight=1000'dan xavfsiz past turishi
-  // uchun, hatto potokda bir nechta guruh bitta harakatda birga siljisa ham) katta
-  // jarima (groupCost'ga qarang). 0 oyna ideal, 1 oyna qabul qilinadi (past narx),
-  // 2+ dan boshlab keskin qimmatlashadi.
+  // Guruh oynasi 1 tadan OSHSA — har qo'shimcha oyna uchun alohida, CHIZIQLI katta jarima
   groupGapOverCap: 150,
   consecutive: 3, // 4 tadan ortiq ketma-ket dars (har ortig'i)
-  subjectSpread: 100, // bir fan bir kunda ikkinchi marta kelsa (ketma-ket bo'lsa ham, orada tanaffus bo'lsa ham) — boshqa kunga ko'chirilishi kerak. Vazn ATAYIN baland: teacherGap/lonePair/groupDayMin kabi "kunlarni siqish" tendensiyasidan HAR DOIM ustun turishi kerak (bir fan kuni muhimroq)
-  subjectConsecutiveDays: 18, // bir fan ketma-ket kunlarga tushsa (masalan Dush+Sesh) — 1 kun oralik yetarli, ortiqcha tanaffus shart emas
-  subjectAdjacent: 20, // ikki XIL fan bir kunda ketma-ket juftlikda kelsa (masalan 2-juftlik va 3-juftlik) — talabalarga og'ir, ayniqsa til fanlarida
-  subjectTypeOrder: 16, // bir fanning ma'ruza/seminar/amaliy turlari haftada noto'g'ri tartibda kelsa (masalan seminar ma'ruzadan oldin) — har teskari juftlik uchun
-  groupDayMax: 15, // guruh uchun kunlik darslar soni 4 tadan oshsa — har ortiqcha dars uchun
-  groupDayMin: 12, // guruh uchun band kunda atigi 1 ta dars bo'lsa (2 tadan kam) — talaba shu 1 soat uchun kelmasin
-  assignedRoom: 22, // guruhga maxsus biriktirilgan xona bor-u, dars boshqa xonaga qo'yilgan bo'lsa
-  roomFit: 2, // xona sig'imi guruh sonidan (+2 tolerantlik bilan) ortiqcha bo'lsa — har ortiqcha o'rin uchun
+  subjectSpread: 100, // bir fan bir kunda ikkinchi marta kelsa — boshqa kunga ko'chirilishi kerak
+  subjectConsecutiveDays: 18, // bir fan ketma-ket kunlarga tushsa (masalan Dush+Sesh)
+  subjectAdjacent: 20, // ikki XIL fan bir kunda ketma-ket juftlikda kelsa
+  subjectTypeOrder: 16, // fanning ma'ruza/seminar/amaliy turlari haftada teskari tartibda (har juftlik uchun)
+  groupDayMax: 15, // guruhning kunlik darslari 4 tadan oshsa — har ortiqchasi uchun
+  groupDayMin: 12, // band kunda atigi 1 ta dars — talaba shu 1 soat uchun kelmasin
+  assignedRoom: 22, // biriktirilgan xona bor-u, dars boshqa xonaga qo'yilgan
+  roomFit: 2, // xona sig'imi guruhdan (+2 tolerantlik) ortiq — har ortiqcha o'rin uchun
   morning: 1, // qiyin fan kechki juftlikda
   groupBalance: 1, // guruh yukini kunlarga teng taqsimlash
-  lonePair: 8, // o'qituvchi kuni 1 juftlikdan iborat — 1 soat uchun qatnamasin
+  lonePair: 8, // o'qituvchi kuni 1 juftlikdan iborat
   teacherDay: 2, // o'qituvchining har ish kuni — kamroq kun = ixcham hafta
   roomChange: 1, // guruh uchun har xil xona (barqarorlik)
   MAX_CONSEC: 4,
 }
 
-// Bir kundagi "oyna" (gap) soni: kun boshi (dayStart)dan birinchi darsgacha bo'sh
-// juftliklar + darslar orasidagi bo'sh juftliklar — ikkalasi ham xuddi shunday
-// behuda kutish (talaba/o'qituvchi band bo'lmagan vaqtda o'qishga kelib turishi).
-// dayStart=1 (standart) — kun 1-juftlikdan boshlanishi kerak deb hisoblanadi.
-function gapsInDay(pairs, dayStart = 1) {
-  if (pairs.length === 0) return 0
-  const min = Math.min(...pairs), max = Math.max(...pairs)
-  const leading = Math.max(0, min - dayStart)
-  const internal = (max - min + 1) - pairs.length
-  return leading + internal
+const popcount = (x) => { let n = 0; while (x) { x &= x - 1; n++ } return n }
+const highBit = (x) => 31 - Math.clz32(x)
+
+export function groupCost(groupEvents, W = WEIGHTS, dayStart = null) {
+  return groupEval(groupEvents, dayStart, W)[0]
 }
 
-// Eng uzun ketma-ketlikdan 4 dan ortig'i uchun jazo
-function consecutivePenalty(pairs) {
-  if (pairs.length < 2) return 0
-  const sorted = [...pairs].sort((a, b) => a - b)
-  let run = 1, penalty = 0
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i] === sorted[i - 1] + 1) run++
-    else { if (run > WEIGHTS.MAX_CONSEC) penalty += run - WEIGHTS.MAX_CONSEC; run = 1 }
-  }
-  if (run > WEIGHTS.MAX_CONSEC) penalty += run - WEIGHTS.MAX_CONSEC
-  return penalty
-}
-
-// Bitta guruhning yumshoq jarimasi (faqat shu guruh eventlari kerak — delta uchun)
-export function groupCost(groupEvents, W = WEIGHTS) {
-  const perDay = Array.from({ length: DAYS }, () => [])
+// Bitta guruhning [yumshoq jarima, haftalik oynalar soni] — faqat shu guruh eventlari kerak
+// (delta-baholash). OYNA = kun ichida darslar ORASIDAGI bo'sh juftlik, takrorlanmas juftliklar
+// bo'yicha sanaladi (bir juftlikka tushgan ikki dars oynani "yopib" qo'ymaydi). Kun boshidagi bo'sh
+// vaqt (guruhning boshlanish juftligidan birinchi darsgacha) oyna EMAS, faqat yumshoq jarima.
+// dayStart berilmasa — birinchi joylangan eventning boshlanish juftligi olinadi.
+export function groupEval(groupEvents, dayStart = null, W = WEIGHTS) {
+  const perDay = new Array(DAYS).fill(null) // kun → [[juftlik 0..5, fan, qiyinlik]]
   const rooms = new Set()
-  const subjectDays = new Map() // subjectId -> Set(day) — kunlar oralig'ini tekshirish uchun
+  const subjectDays = new Map() // fan → kunlar bit-niqobi
+  let typed = null
   let cost = 0
-  // Guruhning tanlangan boshlanish juftligi (timeslots.js — har guruh o'ziniki tanlaydi)
-  // — shundan oldingi bo'sh vaqt "oyna" hisoblanadi (gapsInDay). Hard filter tufayli
-  // guruh hech qachon startPair'dan oldinga tushmaydi, shu sabab bu faqat kun ICHIDAGI
-  // (startPair bilan birinchi dars orasidagi) bo'shliqni ta'sirlaydi.
-  const dayStart = groupEvents.find((e) => e.slot >= 0)?.startPair ?? 1
+  const guessStart = dayStart == null
+  if (guessStart) dayStart = 0
   for (const e of groupEvents) {
-    if (e.slot < 0) continue
-    perDay[dayOf(e.slot)].push(e)
-    rooms.add(e.room)
-    if (!subjectDays.has(e.subjectId)) subjectDays.set(e.subjectId, new Set())
-    subjectDays.get(e.subjectId).add(dayOf(e.slot))
-
-    // Guruhga maxsus biriktirilgan xona(lar) bor-u, dars boshqa xonaga qo'yilgan bo'lsa
-    if (e.assignedRooms && e.assignedRooms.length && e.room >= 0 && !e.assignedRooms.includes(e.room)) {
-      cost += W.assignedRoom
+    const slot = e.slot
+    if (slot < 0) continue
+    if (guessStart && !dayStart) dayStart = e.startPair
+    const day = Math.floor(slot / PAIRS), q = slot % PAIRS
+    const item = [q, e.subjectId, e.difficulty]
+    if (perDay[day] === null) perDay[day] = [item]
+    else perDay[day].push(item)
+    const room = e.room
+    rooms.add(room)
+    subjectDays.set(e.subjectId, (subjectDays.get(e.subjectId) || 0) | (1 << day))
+    if (e.assignedRooms.length && room >= 0 && !e.assignedSet.has(room)) cost += W.assignedRoom
+    // POTOK (bir nechta guruh) ATAYLAB katta xonani band qiladi — roomFit unga tegishli emas
+    if (e.single) {
+      const cap = e.roomCapacities[room]
+      if (cap != null && cap - e.groupSize > 2) cost += (cap - e.groupSize - 2) * W.roomFit
     }
-    // Xona sig'imi guruh sonidan ancha ortiq bo'lmasin (+2 tolerantlik) — mos xona afzal.
-    // POTOK (bir nechta guruh birga, e.groupIds.length>1) darsga TEGISHLI EMAS — potok
-    // ATAYLAB kattaroq xonani band qiladi (guruhlarni bittaga jamlaydi), bu "behuda joy"
-    // emas, balki maqsad shu — aks holda bu jarima loadData.js'dagi "potok katta zalga"
-    // ustuvorligini SA davomida asta-sekin yo'qqa chiqarib qo'yardi.
-    const cap = e.roomCapacities ? e.roomCapacities[e.room] : null
-    if (cap != null && cap - e.groupSize > 2 && e.groupIds.length === 1) cost += (cap - e.groupSize - 2) * W.roomFit
-  }
-
-  const counts = []
-  let weeklyGap = 0
-  for (const day of perDay) {
-    const pairs = day.map((e) => pairOf(e.slot))
-    counts.push(day.length)
-    weeklyGap += gapsInDay(pairs, dayStart)
-    cost += consecutivePenalty(pairs) * W.consecutive
-    // Kunlik darslar soni: 4 tadan oshmasin, band kunda 1 tadan iborat bo'lmasin (2 tadan kam)
-    if (day.length > 4) cost += (day.length - 4) * W.groupDayMax
-    else if (day.length === 1) cost += W.groupDayMin
-
-    // Bir fan bir kunda ikkinchi (yoki undan ortiq) marta kelsa — ketma-ket bo'lsa ham,
-    // orada tanaffus bo'lsa ham — talabalar uchun noqulay, boshqa kunga ko'chirilishi kerak.
-    const bySubject = new Map()
-    for (const e of day) bySubject.set(e.subjectId, (bySubject.get(e.subjectId) || 0) + 1)
-    for (const count of bySubject.values()) {
-      if (count > 1) cost += (count - 1) * W.subjectSpread
-    }
-
-    // Ikki XIL fan ketma-ket juftlikda kelmasin (masalan 2-juftlik boshqa fan,
-    // 3-juftlik yana boshqa fan — talabalarga og'ir, ayniqsa til fanlarida).
-    const daySorted = [...day].sort((a, b) => pairOf(a.slot) - pairOf(b.slot))
-    for (let i = 1; i < daySorted.length; i++) {
-      const p1 = pairOf(daySorted[i - 1].slot), p2 = pairOf(daySorted[i].slot)
-      if (p2 - p1 === 1 && daySorted[i - 1].subjectId !== daySorted[i].subjectId) cost += W.subjectAdjacent
-    }
-
-    // qiyin fan (difficulty>=4) kechki juftlikda — ertalabni rag'batlantirish
-    for (const e of day) {
-      const p = pairOf(e.slot)
-      if (e.difficulty >= 4 && p > 3) cost += (e.difficulty - 3) * (p - 3) * W.morning
+    if (e.rank != null) {
+      if (typed === null) typed = new Map()
+      let list = typed.get(e.subjectId)
+      if (!list) typed.set(e.subjectId, (list = []))
+      list.push([slot, e.rank])
     }
   }
 
-  // Haftalik jami oyna — KVADRATIK (yuqoridagi izohga qarang): boshqa guruhlarga
-  // nisbatan to'planib qolgan oynani qattiqroq jazolab, taqsimlanishga majburlaydi.
-  // 1 tadan oshgan qismi uchun ALOHIDA, ancha katta qo'shimcha jarima (qat'iy "ko'pi
-  // bilan bitta okno" qoidasi — WEIGHTS.groupGapOverCap'ga qarang).
+  const maxConsec = W.MAX_CONSEC
+  let weeklyGap = 0 // yumshoq: kun boshidagi bo'sh vaqt + oynalar
+  let innerGaps = 0 // qattiq: faqat darslar orasidagi oynalar
+  let squares = 0
+  for (const items of perDay) {
+    if (items === null) continue
+    const n = items.length
+    squares += n * n
+    if (n === 1) {
+      const [q, , difficulty] = items[0]
+      if (q + 1 > dayStart) weeklyGap += q + 1 - dayStart
+      cost += W.groupDayMin
+      if (difficulty >= 4 && q > 2) cost += (difficulty - 3) * (q - 2) * W.morning
+      continue
+    }
+    items.sort((a, b) => a[0] - b[0])
+    const lo = items[0][0], hi = items[n - 1][0]
+    const lead = lo + 1 - dayStart
+    let distinct = 1
+    for (let i = 1; i < n; i++) if (items[i][0] !== items[i - 1][0]) distinct++
+    const inner = hi - lo + 1 - distinct
+    innerGaps += inner
+    weeklyGap += (lead > 0 ? lead : 0) + inner
+    let [prevQ, prevSubject, difficulty] = items[0]
+    let morning = difficulty >= 4 && prevQ > 2 ? (difficulty - 3) * (prevQ - 2) : 0
+    const subjects = new Set([prevSubject])
+    let run = 1, penalty = 0, adjacent = 0
+    for (let i = 1; i < n; i++) {
+      const [q, subject, diff] = items[i]
+      if (q === prevQ + 1) {
+        run++
+        if (subject !== prevSubject) adjacent++ // ikki XIL fan ketma-ket juftlikda
+      } else {
+        if (run > maxConsec) penalty += run - maxConsec
+        run = 1
+      }
+      if (diff >= 4 && q > 2) morning += (diff - 3) * (q - 2) // qiyin fan kechki juftlikda
+      subjects.add(subject)
+      prevQ = q
+      prevSubject = subject
+    }
+    if (run > maxConsec) penalty += run - maxConsec
+    cost += penalty * W.consecutive + adjacent * W.subjectAdjacent + morning * W.morning
+    if (n > 4) cost += (n - 4) * W.groupDayMax
+    cost += (n - subjects.size) * W.subjectSpread // bir fan bir kunda ikkinchi (yoki undan ortiq) marta
+  }
+
   cost += weeklyGap * weeklyGap * W.groupGap
   if (weeklyGap > 1) cost += (weeklyGap - 1) * W.groupGapOverCap
-  // kunlar bo'yicha muvozanat (kvadratlar yig'indisi minimal bo'lsa teng taqsimlanadi)
-  cost += counts.reduce((s, c) => s + c * c, 0) * W.groupBalance * 0.5
-  // guruh uchun xona barqarorligi
-  if (rooms.size > 1) cost += (rooms.size - 1) * W.roomChange
+  cost += squares * W.groupBalance * 0.5 // kunlar bo'yicha muvozanat
+  if (rooms.size > 1) cost += (rooms.size - 1) * W.roomChange // xona barqarorligi
 
-  // Fan ketma-ket kunlarga tushmasin (masalan Dushanba+Seshanba) — kamida bitta
-  // kun oralatib joylashsin (Dushanba+Chorshanba va h.k.), talabalarga qulay bo'lsin
-  for (const days of subjectDays.values()) {
-    const sorted = [...days].sort((a, b) => a - b)
-    for (let i = 1; i < sorted.length; i++) {
-      if (sorted[i] - sorted[i - 1] === 1) cost += W.subjectConsecutiveDays
-    }
+  // Fan ketma-ket kunlarga tushmasin — kamida bir kun oralatib
+  for (const mask of subjectDays.values()) {
+    const consecutiveDays = mask & (mask >> 1)
+    if (consecutiveDays) cost += popcount(consecutiveDays) * W.subjectConsecutiveDays
   }
 
-  // Dars turi tartibi: bir fanning ma'ruza/seminar/amaliy darslari HAFTA davomida
-  // to'g'ri tartibda kelsin (avval ma'ruza, keyin seminar, keyin amaliy). Slot raqami
-  // (day*PAIRS+pair) haftadagi xronologik tartibga to'g'ridan-to'g'ri mos keladi.
-  const bySubjectTyped = new Map() // subjectId -> [{ slot, rank }]
-  for (const e of groupEvents) {
-    if (e.slot < 0) continue
-    const rank = TYPE_RANK[e.type]
-    if (rank == null) continue
-    if (!bySubjectTyped.has(e.subjectId)) bySubjectTyped.set(e.subjectId, [])
-    bySubjectTyped.get(e.subjectId).push({ slot: e.slot, rank })
-  }
-  for (const evs of bySubjectTyped.values()) {
-    for (let i = 0; i < evs.length; i++) {
-      for (let j = i + 1; j < evs.length; j++) {
-        const a = evs[i], b = evs[j]
-        if (a.rank === b.rank) continue
-        const earlier = a.slot < b.slot ? a : b, later = a.slot < b.slot ? b : a
-        if (earlier.rank > later.rank) cost += W.subjectTypeOrder // teskari tartib
+  // Dars turi tartibi: fanning ma'ruza/seminar/amaliy darslari hafta davomida to'g'ri tartibda
+  if (typed !== null) {
+    for (const items of typed.values()) {
+      for (let i = 0; i < items.length; i++) {
+        const [aSlot, aRank] = items[i]
+        for (let j = i + 1; j < items.length; j++) {
+          const [bSlot, bRank] = items[j]
+          if (aRank === bRank) continue
+          const earlier = aSlot < bSlot ? aRank : bRank
+          const later = aSlot < bSlot ? bRank : aRank
+          if (earlier > later) cost += W.subjectTypeOrder
+        }
       }
     }
   }
-
-  return cost
+  return [cost, innerGaps]
 }
 
-// Bitta o'qituvchining yumshoq jarimasi.
-// Maqsad: IXCHAM hafta — kamroq ish kuni, kunda kamida 2 juftlik, derazasiz.
-// (Oldingi teacherBalance darslarni kunlarga tekis yoyar edi — bu ish kunlarini
-// ko'paytirib, "1 soat uchun kelish" muammosini keltirib chiqarardi.)
-export function teacherCost(teacherEvents, W = WEIGHTS) {
-  const perDay = Array.from({ length: DAYS }, () => [])
-  for (const e of teacherEvents) {
+// Guruhning oynalari: kun → darslar orasida bo'sh qolgan juftliklar (1..6). Kunlar o'sish tartibida.
+export function groupGapPairs(groupEvents) {
+  const perDay = new Map()
+  for (const e of groupEvents) {
     if (e.slot < 0) continue
-    perDay[dayOf(e.slot)].push(e)
+    const day = Math.floor(e.slot / PAIRS)
+    if (!perDay.has(day)) perDay.set(day, new Set())
+    perDay.get(day).add((e.slot % PAIRS) + 1)
+  }
+  const gaps = new Map()
+  for (const day of [...perDay.keys()].sort((a, b) => a - b)) {
+    const pairs = perDay.get(day)
+    const lo = Math.min(...pairs), hi = Math.max(...pairs)
+    const empty = []
+    for (let p = lo + 1; p < hi; p++) if (!pairs.has(p)) empty.push(p)
+    if (empty.length) gaps.set(day, empty)
+  }
+  return gaps
+}
+
+// O'qituvchining yumshoq jarimasi. Maqsad: IXCHAM hafta — kamroq ish kuni, kunda 2+ juftlik, derazasiz.
+export function teacherCost(teacherEvents, W = WEIGHTS) {
+  const masks = new Array(DAYS).fill(0) // kun → band juftliklar bit-niqobi (takrorlanmas)
+  for (const e of teacherEvents) {
+    if (e.slot >= 0) masks[Math.floor(e.slot / PAIRS)] |= 1 << (e.slot % PAIRS)
   }
   let cost = 0
   let weeklyGap = 0
-  for (const day of perDay) {
-    if (day.length === 0) continue
-    const pairs = day.map((e) => pairOf(e.slot))
-    weeklyGap += gapsInDay(pairs) // derazalar
-    cost += W.teacherDay // har faol kun — kunlar soni kamaysin
-    if (day.length === 1) cost += W.lonePair // yolg'iz juftlik kuni — eng yomoni
+  for (const mask of masks) {
+    if (!mask) continue
+    const n = popcount(mask)
+    const lo = highBit(mask & -mask)
+    const hi = highBit(mask)
+    weeklyGap += lo + (hi - lo + 1 - n) // kun boshi (1-juftlik) + ichki oynalar
+    cost += W.teacherDay
+    if (n === 1) cost += W.lonePair
   }
-  // Haftalik jami oyna — KVADRATIK (groupCost'dagi kabi): boshqa o'qituvchilarga
-  // nisbatan to'planib qolgan oynani qattiqroq jazolab, taqsimlanishga majburlaydi
-  cost += weeklyGap * weeklyGap * W.teacherGap
-  return cost
+  return cost + weeklyGap * weeklyGap * W.teacherGap
 }
 
-// Jami yumshoq jarima (to'liq o'tish — boshlang'ich qiymat va hisobot uchun)
 export function totalSoft(ctx) {
   let soft = 0
-  for (const evs of ctx.byGroup.values()) soft += groupCost(evs)
-  for (const evs of ctx.byTeacher.values()) soft += teacherCost(evs)
+  for (const [gid, events] of ctx.byGroup) soft += groupEval(events, ctx.groupStart.get(gid) ?? null)[0]
+  for (const events of ctx.byTeacher.values()) soft += teacherCost(events)
   return soft
+}
+
+// Barcha guruhlardagi oynalar (darslar orasidagi bo'sh juftliklar) soni — qattiq buzilish
+export function totalGaps(ctx) {
+  let gaps = 0
+  for (const [gid, events] of ctx.byGroup) gaps += groupEval(events, ctx.groupStart.get(gid) ?? null)[1]
+  return gaps
 }

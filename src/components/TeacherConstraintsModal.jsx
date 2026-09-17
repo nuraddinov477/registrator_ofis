@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Trash2, Pencil, Plus, X } from 'lucide-react'
-import { db, useCollection } from '../data/store'
+import { db, useCollection, useHasLoaded } from '../data/store'
 import { Modal, Field, SearchableSelect, Badge } from './ui'
 
 // O'qituvchi istisnolari — jadval generatsiyasida QAT'IY hisobga olinadi:
@@ -11,8 +11,10 @@ const PAIRS = [1, 2, 3, 4, 5, 6]
 
 const parseArr = (s) => { try { return s ? JSON.parse(s) : [] } catch { return [] } }
 
-export default function TeacherConstraintsModal({ open, onClose }) {
+// focusTeacherId — oyna shu o'qituvchining istisnosi (bo'lmasa yangi istisno formasi) bilan ochiladi
+export default function TeacherConstraintsModal({ open, onClose, focusTeacherId }) {
   const items = useCollection('teacherConstraints')
+  const ready = useHasLoaded('teacherConstraints')
   const teachers = useCollection('teachers')
   const [editing, setEditing] = useState(null) // null = ro'yxat, {} = yangi, {...} = tahrirlash
   const [form, setForm] = useState({})
@@ -29,6 +31,17 @@ export default function TeacherConstraintsModal({ open, onClose }) {
     setErr('')
   }
   const closeForm = () => { setEditing(null); setErr('') }
+
+  // Tashxisdan ochilganda — ro'yxat yuklangach kerakli o'qituvchi formasini bir marta ochamiz
+  const focused = useRef(null)
+  useEffect(() => {
+    if (!open) { focused.current = null; return }
+    if (!focusTeacherId || !ready || focused.current === focusTeacherId) return
+    focused.current = focusTeacherId
+    const row = items.find((x) => x.teacherId === Number(focusTeacherId))
+    if (row) openEdit(row)
+    else { setEditing({}); setForm({ teacherId: Number(focusTeacherId), blockedDays: [], allowedPairs: [] }); setErr('') }
+  }, [open, focusTeacherId, ready, items])
 
   const toggleDay = (d) => setForm((f) => ({ ...f, blockedDays: f.blockedDays.includes(d) ? f.blockedDays.filter((x) => x !== d) : [...f.blockedDays, d] }))
   const togglePair = (p) => setForm((f) => ({ ...f, allowedPairs: f.allowedPairs.includes(p) ? f.allowedPairs.filter((x) => x !== p) : [...f.allowedPairs, p] }))

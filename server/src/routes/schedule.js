@@ -237,77 +237,130 @@ scheduleRouter.get('/runs/:id/room-availability', asyncHandler(async (req, res) 
   res.json({ days: DAY_NAMES, pairs: PAIRS, rooms: result })
 }))
 
+const parseReport = (raw) => {
+  try { return raw ? JSON.parse(raw) : null } catch { return null }
+}
+
+// Qattiq buzilishlar (nomlarsiz): guruh/o'qituvchi/xona to'qnashuvlari va oynalar.
+// Har biri: type, entityId, day, pair, items (darslar), weight (qattiq ballga hissasi) [, gapPairs].
+function findViolations(entries) {
+  // Potok: bitta dars bir nechta guruhga BIRGA o'tiladi — ScheduleEntry'da har guruh uchun alohida
+  // qator bo'ladi (day/pair/teacher/room/subject bir xil, faqat groupId farq qiladi). Bu haqiqiy
+  // to'qnashuv EMAS — o'qituvchi/xona tekshiruvidan oldin BITTA "dars"ga birlashtiriladi.
+  const lessonMap = new Map()
+  for (const e of entries) {
+    const k = `${e.day}|${e.pair}|${e.teacherId}|${e.roomId}|${e.subjectId}|${e.type}`
+    if (!lessonMap.has(k)) lessonMap.set(k, { ...e, groupIds: [] })
+    lessonMap.get(k).groupIds.push(e.groupId)
+  }
+  const lessons = [...lessonMap.values()]
+
+  const found = []
+  const section = (type, items, entity) => {
+    const buckets = new Map()
+    for (const item of items) {
+      const k = `${item[entity]}|${item.day}|${item.pair}`
+      if (!buckets.has(k)) buckets.set(k, [])
+      buckets.get(k).push(item)
+    }
+    for (const clash of buckets.values()) {
+      if (clash.length < 2) continue
+      const { day, pair } = clash[0]
+      found.push({ type, entityId: clash[0][entity], day, pair, items: clash, weight: clash.length - 1 })
+    }
+  }
+  // Guruh: har qatorning o'zi (bitta guruh ikkita alohida darsga tushib qolsa — real xato)
+  section('group', entries.map((e) => ({ ...e, groupIds: [e.groupId] })), 'groupId')
+  // O'qituvchi va xona: potok birlashtirilgan darslar
+  section('teacher', lessons, 'teacherId')
+  section('room', lessons, 'roomId')
+
+  // Oyna (guruhda darslar orasidagi bo'sh juftlik) — QAT'IY taqiqlangan; qo'lda tahrirdan keyin ham ko'rinadi
+  const byGroupDay = new Map()
+  for (const e of entries) {
+    const k = `${e.groupId}|${e.day}`
+    if (!byGroupDay.has(k)) byGroupDay.set(k, [])
+    byGroupDay.get(k).push({ ...e, groupIds: [e.groupId] })
+  }
+  for (const items of byGroupDay.values()) {
+    const busy = new Set(items.map((x) => x.pair))
+    const empty = []
+    for (let p = Math.min(...busy) + 1; p < Math.max(...busy); p++) if (!busy.has(p)) empty.push(p)
+    if (empty.length) {
+      found.push({
+        type: 'gap', entityId: items[0].groupId, day: items[0].day, pair: empty[0], gapPairs: empty,
+        items: [...items].sort((a, b) => a.pair - b.pair), weight: empty.length,
+      })
+    }
+  }
+  return found
+}
+
+function breakdownOf(violations) {
+  const out = { group: 0, teacher: 0, room: 0, gap: 0 }
+  for (const v of violations) out[v.type] += v.weight
+  return out
+}
+
+// Qo'lda tahrirdan keyin qattiq buzilishlarni qayta sanaydi va jadvalga yozadi
+async function refreshScore(runId) {
+  const [run, entries] = await Promise.all([
+    prisma.schedulingRun.findUnique({ where: { id: runId } }),
+    prisma.scheduleEntry.findMany({ where: { runId }, orderBy: { id: 'asc' } }),
+  ])
+  const breakdown = breakdownOf(findViolations(entries))
+  const parsed = parseReport(run?.report)
+  const report = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  report.breakdown = breakdown
+  report.editedAt = new Date().toISOString()
+  const hardScore = breakdown.group + breakdown.teacher + breakdown.room + breakdown.gap
+  await prisma.schedulingRun.update({ where: { id: runId }, data: { hardScore, report: JSON.stringify(report) } })
+  return { hardScore, breakdown }
+}
+
+// GET /api/schedule/runs/:id/score — joriy qattiq buzilish soni (qo'lda tahrirdan keyin yangilanadi)
+scheduleRouter.get('/runs/:id/score', asyncHandler(async (req, res) => {
+  const run = await prisma.schedulingRun.findUnique({ where: { id: Number(req.params.id) } })
+  if (!run) return res.status(404).json({ error: 'Run topilmadi' })
+  const report = parseReport(run.report)
+  res.json({ hardScore: run.hardScore, breakdown: report && typeof report === 'object' ? report.breakdown ?? null : null })
+}))
+
 // GET /api/schedule/runs/:id/violations
 // "Qattiq buzilish" (hardScore) sonining ORQASIDAGI aniq manzillari: qaysi kun/juftlikda
-// qaysi guruh/o'qituvchi/xona uchun 2+ dars bir vaqtga to'qnashib qolgan (to'qnashgan
-// darslarning har biri — fan/guruh/o'qituvchi/xona bilan birga).
+// qaysi guruh/o'qituvchi/xona uchun 2+ dars bir vaqtga to'qnashib qolgan va qaysi guruhda
+// oyna qolgan (har biri — fan/guruh/o'qituvchi/xona/juftlik bilan birga).
 scheduleRouter.get('/runs/:id/violations', asyncHandler(async (req, res) => {
   const id = Number(req.params.id)
   const run = await prisma.schedulingRun.findUnique({ where: { id } })
   if (!run) return res.status(404).json({ error: 'Run topilmadi' })
 
   const [entries, subjects, groups, teachers, rooms] = await Promise.all([
-    prisma.scheduleEntry.findMany({ where: { runId: id } }),
+    prisma.scheduleEntry.findMany({ where: { runId: id }, orderBy: { id: 'asc' } }),
     prisma.subject.findMany(), prisma.group.findMany(), prisma.teacher.findMany(), prisma.room.findMany(),
   ])
   const sName = new Map(subjects.map((x) => [x.id, x.name]))
   const gName = new Map(groups.map((x) => [x.id, x.name]))
   const tName = new Map(teachers.map((x) => [x.id, x.fullName]))
   const rName = new Map(rooms.map((x) => [x.id, x.name]))
+  const names = { group: gName, teacher: tName, room: rName, gap: gName }
 
-  // Potok: bitta dars bir nechta guruhga BIRGA o'tiladi — ScheduleEntry'da har guruh
-  // uchun alohida qator bo'ladi (day/pair/teacher/room/subject bir xil, faqat groupId
-  // farq qiladi). Bu haqiqiy to'qnashuv EMAS — shu sabab o'qituvchi/xona tekshiruvidan
-  // oldin bunday qatorlar BITTA "dars"ga birlashtiriladi (guruh tekshiruvida esa har bir
-  // guruhning o'z qatori muhim — ikkita alohida darsga tushib qolgan bo'lsa, bu real xato).
-  const lessonKey = (e) => `${e.day}|${e.pair}|${e.teacherId}|${e.roomId}|${e.subjectId}|${e.type}`
-  const lessonMap = new Map()
-  for (const e of entries) {
-    const k = lessonKey(e)
-    if (!lessonMap.has(k)) lessonMap.set(k, { ...e, groupIds: [] })
-    lessonMap.get(k).groupIds.push(e.groupId)
-  }
-  const lessons = [...lessonMap.values()]
   const lessonInfo = (l) => ({
     subject: sName.get(l.subjectId) || `#${l.subjectId}`,
     group: l.groupIds.map((gid) => gName.get(gid) || `#${gid}`).join(', '),
     teacher: tName.get(l.teacherId) || `#${l.teacherId}`,
     room: rName.get(l.roomId) || `#${l.roomId}`,
-    type: l.type,
+    type: l.type, pair: l.pair,
   })
 
-  const byKey = (list, keyFn) => {
-    const m = new Map()
-    for (const e of list) {
-      const k = keyFn(e)
-      if (!m.has(k)) m.set(k, [])
-      m.get(k).push(e)
-    }
-    return m
-  }
-
-  const violations = []
-  const buildSection = (type, list, keyFn, nameOf) => {
-    const m = byKey(list, keyFn)
-    for (const [k, es] of m) {
-      if (es.length < 2) continue
-      const [entityId, day, pair] = k.split('|').map(Number)
-      violations.push({
-        type, entityId, entityName: nameOf(entityId),
-        day, dayName: DAY_NAMES[day], pair,
-        lessons: es.map(lessonInfo),
-      })
-    }
-  }
-  // Guruh: har qatorning o'zi (bitta guruh ikkita alohida darsga tushib qolsa — real xato)
-  buildSection('group', entries.map((e) => ({ ...e, groupIds: [e.groupId] })),
-    (e) => `${e.groupId}|${e.day}|${e.pair}`, (id) => gName.get(id) || `#${id}`)
-  // O'qituvchi va xona: potok birlashtirilgan darslar ("lessons") — bir xil o'qituvchi/xona
-  // ikkita HAQIQATDA BOSHQA dars (boshqa fan/tur yoki boshqa o'qituvchi/xona) bilan to'qnashsa
-  buildSection('teacher', lessons, (l) => `${l.teacherId}|${l.day}|${l.pair}`, (id) => tName.get(id) || `#${id}`)
-  buildSection('room', lessons, (l) => `${l.roomId}|${l.day}|${l.pair}`, (id) => rName.get(id) || `#${id}`)
-
-  violations.sort((a, b) => a.day - b.day || a.pair - b.pair || a.type.localeCompare(b.type))
+  const violations = findViolations(entries).map((v) => ({
+    type: v.type, entityId: v.entityId,
+    entityName: names[v.type].get(v.entityId) || `#${v.entityId}`,
+    day: v.day, dayName: DAY_NAMES[v.day], pair: v.pair,
+    ...(v.type === 'gap' ? { gapPairs: v.gapPairs } : {}),
+    lessons: v.items.map(lessonInfo),
+  }))
+  violations.sort((a, b) => a.day - b.day || a.pair - b.pair || (a.type < b.type ? -1 : a.type > b.type ? 1 : 0))
   res.json({ hardScore: run.hardScore, violations })
 }))
 
@@ -338,42 +391,34 @@ async function slotConflicts({ runId, day, pair, groupId, teacherId, roomId, exc
 const conflictMsg = (reasons) => `Bu mumkin emas: shu vaqtda ${reasons.join(', ')} band`
 
 // Qo'lda tahrirlashda ham xona qoidalari qat'iy tekshiriladi (generatsiyadagi kabi):
-// sig'im, fakultet binosi egaligi, MAXSUS xona ruxsati (faqat belgilangan guruh/o'qituvchi/yo'nalish).
+// sig'im, katta zal hajmi, fakultet binosi egaligi, MAXSUS xona ruxsati, qat'iy biriktirish.
 // Mos bo'lsa null, aks holda aniq sabab matni qaytadi.
-async function roomEligibility({ roomId, groupId, teacherId, type, subjectId }) {
+async function roomEligibility({ roomId, groupId, teacherId, subjectId }) {
   const [room, group] = await Promise.all([
     prisma.room.findUnique({ where: { id: roomId }, include: { permissions: true, building: { include: { faculties: true } } } }),
     prisma.group.findUnique({ where: { id: groupId } }),
   ])
   if (!room) return 'Xona topilmadi'
   if (!group) return 'Guruh topilmadi'
-  if (room.capacity < (group.size ?? 0)) {
+  const size = group.size ?? 0
+  if (room.capacity < size) {
     return `Xona sig'imi yetarli emas: "${room.name}" ${room.capacity} o'rinli, guruhda ${group.size} talaba`
   }
-  // Katta auditoriya (60+) — generatsiyadagi kabi (loadData.js'ga qarang):
-  // asosiy (fakultetsiz) binoda — QAT'IY, tur (Ma'ruza/Amaliy/Seminar)dan qat'i nazar,
-  // faqat MAIN_HALL_MIN-MAIN_HALL_MAX (65-105, 70-100 ± 5) talaba, VA fanga boshqa
-  // joyda maxsus xona biriktirilgan bo'lsa (masalan sport zali) UMUMAN taqiqlanadi;
-  // fakultet binosida — oddiy 60+ qoidasi (faqat Ma'ruzada).
-  if (room.capacity > LARGE_ROOM_CAPACITY) {
-    const bFacIds = room.building?.faculties?.map((f) => f.id) ?? []
-    if (bFacIds.length === 0) {
-      if (subjectId != null) {
-        const dedicated = await prisma.roomPermission.count({ where: { subjectId, room: { type: 'maxsus' } } })
-        if (dedicated > 0) return `"${room.name}" — asosiy binodagi katta zal, bu fanga boshqa joyda maxsus xona biriktirilgan (masalan sport zali) — bu yerdan foydalanmaydi`
-      }
-      const size = group.size ?? 0
-      if (size < MAIN_HALL_MIN || size > MAIN_HALL_MAX) {
-        return `"${room.name}" — asosiy binodagi katta zal (${room.capacity} o'rin), faqat ${MAIN_HALL_MIN}-${MAIN_HALL_MAX} talabali guruh/potok uchun ajratilgan (bu guruhda ${size} talaba)`
-      }
-    } else if (type === 'Maʼruza' && (group.size ?? 0) <= LARGE_ROOM_CAPACITY) {
-      return `"${room.name}" — katta auditoriya (${room.capacity} o'rin), ma'ruzada faqat ${LARGE_ROOM_CAPACITY} dan ortiq talabali guruh/potok uchun ajratilgan (bu guruhda ${group.size} talaba)`
+  const bFacIds = room.building?.faculties?.map((f) => f.id) ?? []
+  // Katta zal (60+ o'rin, qaysi binoda bo'lmasin) — generatsiyadagi kabi QAT'IY faqat 65-105 talabali
+  // sinf; xonaning o'zi shu fanga biriktirilgan bo'lsa (masalan sport zali) — hajm qoidasi qo'llanilmaydi
+  const ownRoom = subjectId != null && room.permissions.some((p) => p.subjectId === subjectId)
+  if (room.capacity > LARGE_ROOM_CAPACITY && !ownRoom) {
+    if (bFacIds.length === 0 && subjectId != null) {
+      const dedicated = await prisma.roomPermission.count({ where: { subjectId } })
+      if (dedicated > 0) return `"${room.name}" — asosiy binodagi katta zal, bu fanga boshqa joyda maxsus xona biriktirilgan (masalan sport zali) — bu yerdan foydalanmaydi`
+    }
+    if (size < MAIN_HALL_MIN || size > MAIN_HALL_MAX) {
+      return `"${room.name}" — katta zal (${room.capacity} o'rin), faqat ${MAIN_HALL_MIN}-${MAIN_HALL_MAX} talabali sinf uchun (bu guruhda ${size} talaba) — talaba kam bo'lsa katta zal band qilinmaydi`
     }
   }
-  const bFacIds = room.building?.faculties?.map((f) => f.id) ?? []
   // ISTISNO: xonaga aniq ruxsat (o'qituvchi/guruh/yo'nalish/fan) berilgan bo'lsa —
-  // bino-fakultet egaligi chetlab o'tiladi (loadData.js bilan bir xil — masalan boshqa
-  // fakultetning binosidagi xona o'z binosi yetishmayotgan fakultetga biriktirilishi mumkin)
+  // bino-fakultet egaligi chetlab o'tiladi (loadData.js bilan bir xil)
   const hasPermission = room.permissions.some((p) =>
     p.teacherId === teacherId || p.groupId === groupId
     || (group.specialtyId != null && p.specialtyId === group.specialtyId)
@@ -381,8 +426,8 @@ async function roomEligibility({ roomId, groupId, teacherId, type, subjectId }) 
   if (bFacIds.length > 0 && group.facultyId != null && !bFacIds.includes(group.facultyId) && !hasPermission) {
     return `"${room.name}" boshqa fakultet binosida — bu guruh u yerdan foydalana olmaydi`
   }
-  if (room.type === 'maxsus') {
-    if (!hasPermission) return `"${room.name}" — maxsus xona, bu guruh/o'qituvchi/yo'nalish/fanga kirish ruxsati berilmagan`
+  if (room.type === 'maxsus' && !hasPermission) {
+    return `"${room.name}" — maxsus xona, bu guruh/o'qituvchi/yo'nalish/fanga kirish ruxsati berilmagan`
   }
   // QAT'IY biriktirish: bu guruh faqat exclusive xonalarida dars o'tishi mumkin
   const exPerms = await prisma.roomPermission.findMany({ where: { groupId, exclusive: true }, include: { room: true } })
@@ -397,16 +442,18 @@ scheduleRouter.post('/runs/:id/entries', requireRole('Super Admin'), asyncHandle
   const runId = Number(req.params.id)
   const run = await prisma.schedulingRun.findUnique({ where: { id: runId } })
   if (!run) return res.status(404).json({ error: 'Run topilmadi' })
-  const { groupId, subjectId, teacherId, roomId, day, pair, type } = req.body || {}
+  const { groupId, subjectId, teacherId, roomId, day, pair } = req.body || {}
   for (const [k, v] of Object.entries({ groupId, subjectId, teacherId, roomId })) {
     if (!Number.isInteger(v)) return res.status(400).json({ error: `Maydon kerak: ${k}` })
   }
   if (!isValidSlot(day, pair)) return res.status(400).json({ error: "Kun/juftlik noto'g'ri" })
+  const type = req.body?.type || 'Amaliy'
   const reasons = await slotConflicts({ runId, day, pair, groupId, teacherId, roomId })
   if (reasons.length) return res.status(409).json({ error: conflictMsg(reasons) })
-  const roomErr = await roomEligibility({ roomId, groupId, teacherId, type: type || 'Amaliy', subjectId })
+  const roomErr = await roomEligibility({ roomId, groupId, teacherId, subjectId })
   if (roomErr) return res.status(409).json({ error: roomErr })
-  const entry = await prisma.scheduleEntry.create({ data: { runId, groupId, subjectId, teacherId, roomId, day, pair, type: type || 'Amaliy' } })
+  const entry = await prisma.scheduleEntry.create({ data: { runId, groupId, subjectId, teacherId, roomId, day, pair, type } })
+  await refreshScore(runId)
   await audit("Jadvalga dars qo'shildi", `run #${runId} · ${DAY_NAMES[day]} ${pair}-juft`, req)
   res.status(201).json(entry)
 }))
@@ -417,21 +464,20 @@ scheduleRouter.put('/runs/:id/entries/:entryId', requireRole('Super Admin'), asy
   const entryId = Number(req.params.entryId)
   const existing = await prisma.scheduleEntry.findFirst({ where: { id: entryId, runId } })
   if (!existing) return res.status(404).json({ error: 'Dars topilmadi' })
-  const merged = {
-    groupId: req.body?.groupId ?? existing.groupId,
-    subjectId: req.body?.subjectId ?? existing.subjectId,
-    teacherId: req.body?.teacherId ?? existing.teacherId,
-    roomId: req.body?.roomId ?? existing.roomId,
-    day: req.body?.day ?? existing.day,
-    pair: req.body?.pair ?? existing.pair,
-    type: req.body?.type ?? existing.type,
+  const body = req.body || {}
+  const merged = { day: body.day ?? existing.day, pair: body.pair ?? existing.pair, type: body.type ?? existing.type }
+  for (const key of ['groupId', 'subjectId', 'teacherId', 'roomId']) {
+    const value = body[key]
+    if (value != null && !Number.isInteger(value)) return res.status(400).json({ error: `Maydon noto'g'ri: ${key}` })
+    merged[key] = value ?? existing[key]
   }
   if (!isValidSlot(merged.day, merged.pair)) return res.status(400).json({ error: "Kun/juftlik noto'g'ri" })
   const reasons = await slotConflicts({ runId, ...merged, excludeId: entryId })
   if (reasons.length) return res.status(409).json({ error: conflictMsg(reasons) })
-  const roomErr = await roomEligibility({ roomId: merged.roomId, groupId: merged.groupId, teacherId: merged.teacherId, type: merged.type, subjectId: merged.subjectId })
+  const roomErr = await roomEligibility(merged)
   if (roomErr) return res.status(409).json({ error: roomErr })
   const entry = await prisma.scheduleEntry.update({ where: { id: entryId }, data: merged })
+  await refreshScore(runId)
   await audit('Jadval darsi tahrirlandi', `run #${runId} · ${DAY_NAMES[merged.day]} ${merged.pair}-juft`, req)
   res.json(entry)
 }))
@@ -443,8 +489,133 @@ scheduleRouter.delete('/runs/:id/entries/:entryId', requireRole('Super Admin'), 
   const existing = await prisma.scheduleEntry.findFirst({ where: { id: entryId, runId } })
   if (!existing) return res.status(404).json({ error: 'Dars topilmadi' })
   await prisma.scheduleEntry.delete({ where: { id: entryId } })
+  await refreshScore(runId)
   await audit("Jadvaldan dars o'chirildi", `run #${runId}`, req)
   res.status(204).end()
+}))
+
+// Dars va uning potok "egizaklari" (shu run, shu vaqt, o'qituvchi, fan, xona, tur) + qolgan yozuvlar.
+// Dars topilmasa null
+async function lessonOf(runId, entryId) {
+  const entries = await prisma.scheduleEntry.findMany({ where: { runId }, orderBy: { id: 'asc' } })
+  const entry = Number.isInteger(entryId) && entryId > 0 ? entries.find((e) => e.id === entryId) : null
+  if (!entry) return null
+  const same = (e) => e.day === entry.day && e.pair === entry.pair && e.teacherId === entry.teacherId
+    && e.subjectId === entry.subjectId && e.roomId === entry.roomId && e.type === entry.type
+  const siblings = entries.filter(same)
+  const others = entries.filter((e) => !same(e))
+  return { entry, siblings, others }
+}
+
+function busyReasons(others, entry, groupIds, day, pair, groupNames) {
+  const atSlot = others.filter((e) => e.day === day && e.pair === pair)
+  const reasons = []
+  const busyGroups = [...new Set(atSlot.filter((e) => groupIds.has(e.groupId)).map((e) => e.groupId))].sort((a, b) => a - b)
+  if (busyGroups.length) {
+    reasons.push(groupIds.size === 1
+      ? 'guruh band'
+      : `guruh band: ${busyGroups.map((g) => groupNames.get(g) || `#${g}`).join(', ')}`)
+  }
+  if (atSlot.some((e) => e.teacherId === entry.teacherId)) reasons.push("o'qituvchi band")
+  if (atSlot.some((e) => e.roomId === entry.roomId)) reasons.push('xona band')
+  return reasons
+}
+
+// Kun ichidagi oynalar soni (band juftliklar to'plami bo'yicha)
+const innerGaps = (pairs) => (pairs.size ? Math.max(...pairs) - Math.min(...pairs) + 1 - pairs.size : 0)
+const withPair = (pairs, pair) => new Set([...pairs, pair])
+
+const groupNamesOf = async (groupIds) => new Map(
+  (await prisma.group.findMany({ where: { id: { in: [...groupIds] } }, select: { id: true, name: true } }))
+    .map((g) => [g.id, g.name]),
+)
+
+// GET /api/schedule/runs/:id/entries/:entryId/moves — darsni qaysi kataklarga ko'chirish mumkin (sudrash uchun)
+scheduleRouter.get('/runs/:id/entries/:entryId/moves', requireRole('Super Admin'), asyncHandler(async (req, res) => {
+  const runId = Number(req.params.id)
+  const run = await prisma.schedulingRun.findUnique({ where: { id: runId } })
+  if (!run) return res.status(404).json({ error: 'Run topilmadi' })
+  const lesson = await lessonOf(runId, Number(req.params.entryId))
+  if (!lesson) return res.status(404).json({ error: 'Dars topilmadi' })
+  const { entry, siblings, others } = lesson
+  const groupIds = new Set(siblings.map((e) => e.groupId))
+  const groupNames = await groupNamesOf(groupIds)
+  // har guruhning (potok darsisiz) band juftliklari: guruh → kun → Set(juftlik)
+  const base = new Map([...groupIds].map((g) => [g, new Map()]))
+  for (const e of others) {
+    const days = base.get(e.groupId)
+    if (!days) continue
+    if (!days.has(e.day)) days.set(e.day, new Set())
+    days.get(e.day).add(e.pair)
+  }
+  const blockedDays = new Set(), allowedPairs = new Set()
+  const tc = await prisma.teacherConstraint.findUnique({ where: { teacherId: entry.teacherId } })
+  if (tc) {
+    for (const [raw, target] of [[tc.blockedDays, blockedDays], [tc.allowedPairs, allowedPairs]]) {
+      let values = []
+      try { values = raw ? JSON.parse(raw) : [] } catch { values = [] } // noto'g'ri JSON — generatsiyadagi kabi e'tiborsiz
+      if (Array.isArray(values)) for (const v of values) if (Number.isInteger(v)) target.add(v)
+    }
+  }
+
+  const empty = new Set()
+  const cells = []
+  for (let pair = 1; pair <= PAIRS; pair++) {
+    const row = []
+    for (let day = 0; day < DAYS; day++) {
+      if (day === entry.day && pair === entry.pair) {
+        row.push({ status: 'current', reasons: [], gapDelta: 0 })
+        continue
+      }
+      const reasons = busyReasons(others, entry, groupIds, day, pair, groupNames)
+      const warnings = []
+      const againstConstraint = blockedDays.has(day) || (allowedPairs.size > 0 && !allowedPairs.has(pair))
+      if (againstConstraint) warnings.push("o'qituvchi istisnosiga zid")
+      // oyna: shu darsning guruhlarida ko'chirishdan oldin va keyin (manba va nishon kunida)
+      let delta = 0
+      for (const days of base.values()) {
+        const src = days.get(entry.day) || empty
+        const dst = days.get(day) || empty
+        if (day === entry.day) {
+          delta += innerGaps(withPair(src, pair)) - innerGaps(withPair(src, entry.pair))
+        } else {
+          delta += innerGaps(src) + innerGaps(withPair(dst, pair)) - innerGaps(withPair(src, entry.pair)) - innerGaps(dst)
+        }
+      }
+      if (delta > 0) warnings.push(`${delta} ta oyna paydo bo'ladi`)
+      else if (delta < 0 && !reasons.length) warnings.push(`${-delta} ta oynani yopadi`)
+      const status = reasons.length ? 'busy' : (delta > 0 || againstConstraint ? 'warn' : 'ok')
+      row.push({ status, reasons: [...reasons, ...warnings], gapDelta: delta })
+    }
+    cells.push(row)
+  }
+  res.json({
+    entryId: entry.id, day: entry.day, pair: entry.pair,
+    groups: [...groupIds].sort((a, b) => a - b).map((g) => groupNames.get(g) || `#${g}`), cells,
+  })
+}))
+
+// POST /api/schedule/runs/:id/entries/:entryId/move — darsni (potok bo'lsa BARCHA guruhlari bilan) boshqa slotga
+scheduleRouter.post('/runs/:id/entries/:entryId/move', requireRole('Super Admin'), asyncHandler(async (req, res) => {
+  const runId = Number(req.params.id)
+  const run = await prisma.schedulingRun.findUnique({ where: { id: runId } })
+  if (!run) return res.status(404).json({ error: 'Run topilmadi' })
+  const { day, pair } = req.body || {}
+  if (!isValidSlot(day, pair)) return res.status(400).json({ error: "Kun/juftlik noto'g'ri" })
+  const lesson = await lessonOf(runId, Number(req.params.entryId))
+  if (!lesson) return res.status(404).json({ error: 'Dars topilmadi' })
+  const { entry, siblings, others } = lesson
+  if (day !== entry.day || pair !== entry.pair) {
+    const groupIds = new Set(siblings.map((e) => e.groupId))
+    const reasons = busyReasons(others, entry, groupIds, day, pair, await groupNamesOf(groupIds))
+    if (reasons.length) return res.status(409).json({ error: `Bu mumkin emas: shu vaqtda ${reasons.join(', ')}` })
+    const source = `${DAY_NAMES[entry.day]} ${entry.pair}-juft`
+    await prisma.scheduleEntry.updateMany({ where: { id: { in: siblings.map((e) => e.id) } }, data: { day, pair } })
+    await audit("Jadval darsi ko'chirildi",
+      `run #${runId} · ${source} → ${DAY_NAMES[day]} ${pair}-juft (${siblings.length} ta guruh)`, req)
+  }
+  const score = await refreshScore(runId)
+  res.json({ moved: siblings.length, day, pair, ...score })
 }))
 
 // DELETE /api/schedule/runs/:id  — jadvalni ARXIVGA ko'chiradi (butunlay O'CHIRMAYDI).

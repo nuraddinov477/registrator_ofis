@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Zap, Loader2, RefreshCw, CalendarDays, Trash2, UserCog, Download, ClipboardCheck, XCircle, Archive, RotateCcw } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Zap, Loader2, RefreshCw, CalendarDays, Trash2, UserCog, Download, ClipboardCheck, XCircle, Archive, RotateCcw, Move } from 'lucide-react'
 import { api } from '../api/client'
 import { roleOf, ROLES } from '../lib/access'
 import { Modal, Field, Badge, SearchableSelect } from '../components/ui'
@@ -17,6 +17,29 @@ const DAY_COLORS = [
   'bg-rose-500/15 border-rose-500/30 text-rose-600 dark:text-rose-300',
 ]
 const dt = (s) => (s ? new Date(s).toLocaleString('uz') : '')
+// Guruh jadvalidagi oynalar: kun ichida birinchi va oxirgi dars ORASIDAGI bo'sh katak (qat'iy taqiqlangan)
+const gapCells = (grid) => {
+  const cells = new Set()
+  grid.days.forEach((_, di) => {
+    const busy = grid.grid.map((row, pi) => (row[di] ? pi : -1)).filter((pi) => pi >= 0)
+    for (let pi = busy[0] + 1; pi < busy[busy.length - 1]; pi++) {
+      if (!grid.grid[pi][di]) cells.add(`${pi}:${di}`)
+    }
+  })
+  return cells
+}
+// Darsni ko'chirishda katak holati: ok — mumkin, warn — mumkin, lekin ogohlantirish bilan
+// (oyna paydo bo'ladi / o'qituvchi istisnosiga zid), busy — band (tashlab bo'lmaydi)
+const HINT_STYLES = {
+  ok: 'bg-emerald-500/10 ring-2 ring-inset ring-emerald-500/50',
+  warn: 'bg-amber-500/10 ring-2 ring-inset ring-amber-500/50',
+  busy: 'bg-red-500/5 cursor-not-allowed',
+  current: 'ring-2 ring-inset ring-brand/60',
+}
+const HINT_TARGET = {
+  ok: 'bg-emerald-500/25 ring-emerald-500',
+  warn: 'bg-amber-500/25 ring-amber-500',
+}
 // Har bir juftlikning real soati — server/src/engine/timeslots.js'dagi PAIR_TIMES bilan
 // bir xil bo'lishi shart (1-indeksli: PAIR_TIMES[pair-1]).
 const PAIR_TIMES = ['8:00–9:20', '9:30–10:50', '11:30–12:50', '13:00–14:20', '14:30–15:50', '16:00–17:20']
@@ -39,8 +62,16 @@ export default function Schedule() {
   const [editForm, setEditForm] = useState(null) // { subjectId, teacherId, roomId, day, pair }
   const [editErr, setEditErr] = useState('')
   const [saving, setSaving] = useState(false)
+  // Darsni ko'chirish: sichqoncha bilan sudrash (mode 'drag') yoki tahrirlash oynasidagi
+  // "Boshqa katakka ko'chirish" tugmasi (mode 'pick' — keyin katak bosiladi)
+  const [moving, setMoving] = useState(null) // { entryId, from: 'pi:di', mode, label, hints }
+  const [dropTarget, setDropTarget] = useState(null) // sudralayotgan dars ustidagi katak 'pi:di'
+  const [moveBusy, setMoveBusy] = useState(false)
+  const dropping = useRef(false) // tashlandi, so'rov ketmoqda — dragend ko'chirish holatini tozalamasin
+  const gridRef = useRef(null)
 
   const [tcOpen, setTcOpen] = useState(false) // o'qituvchi istisnolari oynasi
+  const [tcFocus, setTcFocus] = useState(null) // tashxisdan ochilganda — shu o'qituvchi
   const [exportOpen, setExportOpen] = useState(false) // jadvalni yuklab olish oynasi
   const [genOpen, setGenOpen] = useState(false)
   const [semester, setSemester] = useState('1')
@@ -107,6 +138,7 @@ export default function Schedule() {
   // O'qituvchi rolida: o'z jadvali (teacher-grid, teacherId token'dan). Boshqalar: guruh jadvali.
   useEffect(() => {
     setViolations(null)
+    setMoving(null)
     if (!runId) { setGrid(null); setAvail(null); setRoomAvail(null); return }
     let alive = true
     // O'qituvchilar bandligi ko'rinishi (faqat o'qituvchi bo'lmagan rollar uchun)
@@ -207,6 +239,70 @@ export default function Schedule() {
     const g = await api(`/schedule/runs/${runId}/grid?groupId=${groupId}`)
     setGrid(g)
   }
+  // Har tahrirdan keyin: jadval, "qattiq buzilish" soni va (ochiq bo'lsa) buzilishlar ro'yxati yangilanadi
+  const afterEdit = async (score) => {
+    await reloadGroupGrid()
+    try {
+      const s = score || await api(`/schedule/runs/${runId}/score`)
+      setRuns((rs) => rs.map((r) => (r.id === runId
+        ? { ...r, hardScore: s.hardScore, report: { ...(r.report || {}), breakdown: s.breakdown } }
+        : r)))
+      if (violations) setViolations((await api(`/schedule/runs/${runId}/violations`)).violations)
+    } catch { /* ball keyingi yangilashda ko'rinadi */ }
+  }
+
+  const startMove = async (entryId, pi, di, mode, label) => {
+    setMoving({ entryId, from: `${pi}:${di}`, mode, label, hints: null })
+    try {
+      const hints = await api(`/schedule/runs/${runId}/entries/${entryId}/moves`)
+      setMoving((m) => (m && m.entryId === entryId ? { ...m, hints } : m))
+    } catch (e) {
+      setErr(e.message)
+      setMoving(null)
+    }
+  }
+  const hintAt = (pi, di) => moving?.hints?.cells?.[pi]?.[di]
+  const canDropAt = (pi, di) => {
+    const hint = hintAt(pi, di)
+    // maslahat hali kelmagan bo'lsa ham urinib ko'ramiz — server baribir tekshiradi
+    return !!moving && moving.from !== `${pi}:${di}` && hint?.status !== 'busy'
+  }
+  const doMove = async (pi, di) => {
+    const m = moving
+    if (!m || !canDropAt(pi, di)) return
+    dropping.current = true
+    setMoveBusy(true); setErr('')
+    try {
+      const r = await api(`/schedule/runs/${runId}/entries/${m.entryId}/move`, { method: 'POST', body: { day: di, pair: pi + 1 } })
+      setMoving(null)
+      await afterEdit(r)
+    } catch (e) {
+      setErr(e.message)
+      if (m.mode === 'drag') setMoving(null) // sudrash tugadi — "tanlash" rejimida esa qayta urinish mumkin
+    } finally {
+      dropping.current = false
+      setMoveBusy(false)
+      setDropTarget(null)
+    }
+  }
+  const onCellClick = (cell, pi, di) => {
+    if (moving?.mode === 'pick') { doMove(pi, di); return }
+    if (isSuper) openCellEdit(cell, pi, di)
+  }
+  useEffect(() => {
+    if (!moving) return
+    const onKey = (e) => { if (e.key === 'Escape') setMoving(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [moving])
+
+  // Tashxisdan: guruh jadvalini ko'rsatish / o'qituvchi istisnosini ochish
+  const showGroup = (gid) => {
+    setViewMode('group')
+    setGroupId(gid)
+    gridRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  const openTeacherConstraints = (teacherId) => { setTcFocus(teacherId ?? null); setTcOpen(true) }
   const openCellEdit = (cell, pairIndex, dayIndex) => {
     setEditErr('')
     setEditCell({ id: cell?.id ?? null, day: dayIndex, pair: pairIndex + 1 })
@@ -227,7 +323,7 @@ export default function Schedule() {
     try {
       if (editCell.id) await api(`/schedule/runs/${runId}/entries/${editCell.id}`, { method: 'PUT', body })
       else await api(`/schedule/runs/${runId}/entries`, { method: 'POST', body })
-      await reloadGroupGrid()
+      await afterEdit()
       setEditCell(null)
     } catch (e) { setEditErr(e.message) } finally { setSaving(false) }
   }
@@ -236,7 +332,7 @@ export default function Schedule() {
     setSaving(true); setEditErr('')
     try {
       await api(`/schedule/runs/${runId}/entries/${editCell.id}`, { method: 'DELETE' })
-      await reloadGroupGrid()
+      await afterEdit()
       setEditCell(null)
     } catch (e) { setEditErr(e.message) } finally { setSaving(false) }
   }
@@ -264,6 +360,9 @@ export default function Schedule() {
   const statusBadge = (s) => s === 'done' ? <Badge color="green">tayyor</Badge>
     : s === 'failed' ? <Badge color="red">xato</Badge>
       : <Badge color="amber">ishlanmoqda</Badge>
+
+  // O'qituvchi jadvalida oyna yumshoq jarima — qat'iy qoida faqat guruhlar uchun
+  const gridGaps = grid && !isTeacher ? gapCells(grid) : new Set()
 
   return (
     <div>
@@ -347,7 +446,7 @@ export default function Schedule() {
           </Field>
         )}
         {canGenerate && (
-          <button onClick={() => setTcOpen(true)} title="O'qituvchi istisnolari (kunlar/paralar)"
+          <button onClick={() => openTeacherConstraints(null)} title="O'qituvchi istisnolari (kunlar/paralar)"
             className="mb-0.5 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
             <UserCog size={15} /> O'qituvchi istisnolari
           </button>
@@ -401,7 +500,8 @@ export default function Schedule() {
             </span>
             <button onClick={() => setDiag(null)} className="text-xs text-slate-400 hover:text-brand">Yopish</button>
           </div>
-          <ScheduleDiagnostics diagnostics={diag.diagnostics} />
+          <ScheduleDiagnostics diagnostics={diag.diagnostics} onTeacherConstraints={openTeacherConstraints}
+            onShowGroup={showGroup} onChanged={runDiagnose} />
         </div>
       )}
 
@@ -411,14 +511,32 @@ export default function Schedule() {
           <div className="mb-1.5 flex items-center gap-2 text-sm font-medium text-red-500">
             <XCircle size={15} /> #{run.id} jadval to'liq tuzilmadi — sabablari:
           </div>
-          <ScheduleDiagnostics diagnostics={run.report.diagnostics} />
+          <ScheduleDiagnostics diagnostics={run.report.diagnostics} onTeacherConstraints={openTeacherConstraints}
+            onShowGroup={showGroup} />
         </div>
       )}
 
-      {isSuper && viewMode === 'group' && grid && (
+      {isSuper && viewMode === 'group' && grid && !moving && (
         <p className="mb-2 text-xs text-slate-400">
-          💡 Katakni bosib darsni tahrirlang yoki bo'sh katakka yangi dars qo'shing. Tizim to'qnashuvni (band guruh / o'qituvchi / xona) taqiqlaydi.
+          💡 Darsni sichqoncha bilan boshqa katakka sudrang — bo'sh joylar rang bilan ko'rsatiladi. Katakni bosib darsni tahrirlang yoki bo'sh katakka yangi dars qo'shing. Tizim to'qnashuvni (band guruh / o'qituvchi / xona) taqiqlaydi.
         </p>
+      )}
+      {moving && viewMode === 'group' && (
+        <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-brand/30 bg-brand/5 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+          <span className="inline-flex items-center gap-1.5 font-medium text-brand">
+            {moveBusy || !moving.hints ? <Loader2 size={13} className="animate-spin" /> : <Move size={13} />}
+            {moving.mode === 'pick' ? "Ko'chirish: yangi katakni bosing" : "Darsni kerakli katakka tashlang"}
+            {moving.label && <span className="font-normal text-slate-500">— {moving.label}</span>}
+          </span>
+          {moving.hints?.groups?.length > 1 && (
+            <span className="font-medium text-amber-600 dark:text-amber-400">Potok: {moving.hints.groups.join(', ')} birga ko'chadi</span>
+          )}
+          <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-3 rounded-sm bg-emerald-500/40 ring-1 ring-emerald-500" /> bo'sh, oynasiz</span>
+          <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-3 rounded-sm bg-amber-500/40 ring-1 ring-amber-500" /> mumkin, lekin ogohlantirish bor</span>
+          <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-3 rounded-sm bg-red-500/20" /> band</span>
+          <span className="text-slate-400">Katak ustida turing — sababi ko'rinadi</span>
+          <button onClick={() => setMoving(null)} className="ml-auto rounded-md px-2 py-0.5 font-medium text-slate-500 hover:bg-slate-500/10">Bekor (Esc)</button>
+        </div>
       )}
 
       {/* Jadval to'ri */}
@@ -445,7 +563,7 @@ export default function Schedule() {
       ) : !grid ? (
         <div className="card p-10 text-center text-slate-400">Guruh tanlang yoki jadval yuklanmoqda…</div>
       ) : (
-        <div className="card overflow-x-auto">
+        <div ref={gridRef} className="card scroll-mt-4 overflow-x-auto">
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr>
@@ -459,11 +577,36 @@ export default function Schedule() {
               {grid.grid.map((row, pi) => (
                 <tr key={pi}>
                   <td className="border-b border-r border-slate-200 px-2 py-3 text-center font-medium text-slate-400 dark:border-slate-800">{pi + 1}</td>
-                  {row.map((c, di) => (
-                    <td key={di} onClick={isSuper ? () => openCellEdit(c, pi, di) : undefined}
-                      className={`group h-16 border-b border-l border-slate-200 px-1.5 py-1.5 align-top dark:border-slate-800 ${isSuper ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40' : ''}`}>
+                  {row.map((c, di) => {
+                    const key = `${pi}:${di}`
+                    const hint = moving && hintAt(pi, di)
+                    const editable = isSuper && !isTeacher
+                    const canDrag = editable && !!c?.id && !moveBusy
+                    const hintClass = !hint ? '' : `${HINT_STYLES[hint.status] || ''} ${dropTarget === key ? HINT_TARGET[hint.status] || '' : ''}`
+                    return (
+                    <td key={di} onClick={editable ? () => onCellClick(c, pi, di) : undefined}
+                      title={hint?.reasons?.length ? hint.reasons.join(' · ') : undefined}
+                      onDragOver={moving ? (e) => {
+                        if (!canDropAt(pi, di)) return
+                        e.preventDefault()
+                        e.dataTransfer.dropEffect = 'move'
+                        if (dropTarget !== key) setDropTarget(key)
+                      } : undefined}
+                      onDragLeave={moving ? () => setDropTarget((t) => (t === key ? null : t)) : undefined}
+                      onDrop={moving ? (e) => { e.preventDefault(); doMove(pi, di) } : undefined}
+                      className={`group h-16 border-b border-l border-slate-200 px-1.5 py-1.5 align-top transition dark:border-slate-800 ${editable && !moving ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40' : ''} ${moving?.mode === 'pick' && hint && hint.status !== 'busy' && hint.status !== 'current' ? 'cursor-pointer' : ''} ${hintClass}`}>
                       {c ? (
-                        <div className={`rounded-md border px-2 py-1 text-xs ${DAY_COLORS[di % DAY_COLORS.length]}`}>
+                        <div draggable={canDrag}
+                          onDragStart={canDrag ? (e) => {
+                            e.dataTransfer.effectAllowed = 'move'
+                            e.dataTransfer.setData('text/plain', String(c.id))
+                            startMove(c.id, pi, di, 'drag', `${c.subject || 'Fan'} (${grid.days[di]}, ${pi + 1}-juft)`)
+                          } : undefined}
+                          onDragEnd={canDrag ? () => {
+                            setDropTarget(null)
+                            if (!dropping.current) setMoving((m) => (m?.mode === 'drag' ? null : m))
+                          } : undefined}
+                          className={`rounded-md border px-2 py-1 text-xs ${DAY_COLORS[di % DAY_COLORS.length]} ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''} ${moving?.from === key ? 'opacity-60' : ''}`}>
                           <div className="flex items-center justify-between gap-1">
                             <span className="font-semibold">{c.subject || 'Fan'}</span>
                             {c.type && c.type !== 'Amaliy' && (
@@ -475,11 +618,23 @@ export default function Schedule() {
                           <div className="opacity-80">{c.teacher || c.group || ''}</div>
                           {c.room && <div className="opacity-70">{c.room}</div>}
                         </div>
-                      ) : isSuper ? (
+                      ) : hint ? (
+                        <div className={`flex h-full items-center justify-center text-center text-[11px] leading-tight ${
+                          hint.status === 'ok' ? 'text-emerald-600 dark:text-emerald-400' : hint.status === 'warn' ? 'text-amber-600 dark:text-amber-400' : 'text-red-400/80'
+                        }`}>
+                          {hint.status === 'ok' ? (hint.reasons[0] || "bo'sh") : hint.reasons[0]}
+                        </div>
+                      ) : gridGaps.has(key) ? (
+                        <div className="flex h-full items-center justify-center rounded-md border border-dashed border-orange-500/50 bg-orange-500/10 text-xs font-medium text-orange-600 dark:text-orange-300"
+                          title="Darslar orasidagi bo'sh juftlik — oyna bo'lmasligi kerak">
+                          oyna{isSuper && !moving && <span className="ml-1 opacity-0 transition group-hover:opacity-100">· + dars</span>}
+                        </div>
+                      ) : isSuper && !moving ? (
                         <div className="flex h-full items-center justify-center text-xs text-slate-300 opacity-0 transition group-hover:opacity-100 dark:text-slate-600">+ dars</div>
                       ) : null}
                     </td>
-                  ))}
+                    )
+                  })}
                 </tr>
               ))}
             </tbody>
@@ -491,7 +646,9 @@ export default function Schedule() {
       <Modal open={genOpen} onClose={() => setGenOpen(false)} title="Jadval yaratish">
         <div className="space-y-4">
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Engine barcha guruhlar uchun haftalik jadvalni avtomatik tuzadi (qattiq cheklovlarni buzmasdan, yumshoqlarini optimallashtiradi).
+            Engine barcha guruhlar uchun haftalik jadvalni avtomatik tuzadi. To'qnashuv hech qachon bo'lmaydi: bir vaqtda bitta xonada bitta
+            dars, o'qituvchi bitta guruh va xonada, guruh bitta darsda. To'qnashuvsiz joy topilmagan dars jadvalga qo'yilmaydi va sababi
+            ko'rsatiladi. Keyingi ustuvorlik — oynalarni imkon qadar kamaytirish, so'ng yumshoq qoidalar.
           </p>
           <Field label="Semestr">
             <select className="input" value={semester} onChange={(e) => setSemester(e.target.value)}>
@@ -533,7 +690,7 @@ export default function Schedule() {
               })}
             </div>
             <p className="mt-1.5 text-xs text-slate-400">
-              Guruh tanlangan oraliqdan TASHQARIGA hech qachon qo'yilmaydi (qat'iy) va oraliq ichida bo'sh oyna qoldirmaslik yuqori ustuvorlik bilan izlanadi. Kunlik dars soni 2 tadan kam, 4 tadan ko'p bo'lmaydi. Kurs qatori shu kursdagi barcha guruhlarni birdan belgilaydi — pastda har bir guruhni alohida ham o'zgartirish mumkin.
+              Guruh tanlangan oraliqdan TASHQARIGA hech qachon qo'yilmaydi (qat'iy). Oyna — kun ichida darslar orasidagi bo'sh juftlik — QAT'IY taqiqlangan (to'qnashuvdan keyingi eng yuqori ustuvorlik); kun kechroq boshlanishi faqat jarima bilan cheklanadi. Kunlik dars soni 2 tadan kam, 4 tadan ko'p bo'lmaydi. Kurs qatori shu kursdagi barcha guruhlarni birdan belgilaydi — pastda har bir guruhni alohida ham o'zgartirish mumkin.
             </p>
           </Field>
           <Field label="Guruh bo'yicha alohida">
@@ -610,9 +767,19 @@ export default function Schedule() {
             </div>
             {editErr && <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">{editErr}</div>}
             <div className="flex items-center justify-between gap-2 pt-1">
-              <div>
+              <div className="flex items-center gap-1">
                 {editCell?.id && (
                   <button className="btn-ghost text-red-500 hover:bg-red-500/10" onClick={deleteCell} disabled={saving}>O'chirish</button>
+                )}
+                {editCell?.id && (
+                  <button className="btn-ghost" disabled={saving} title="Bo'sh joylarni ko'rsatib, darsni boshqa katakka o'tkazish"
+                    onClick={() => {
+                      const cell = grid?.grid?.[editCell.pair - 1]?.[editCell.day]
+                      setEditCell(null)
+                      startMove(editCell.id, editCell.pair - 1, editCell.day, 'pick', `${cell?.subject || 'Fan'} (${grid?.days?.[editCell.day]}, ${editCell.pair}-juft)`)
+                    }}>
+                    <Move size={15} /> Ko'chirish
+                  </button>
                 )}
               </div>
               <div className="flex gap-2">
@@ -624,7 +791,7 @@ export default function Schedule() {
         )}
       </Modal>
 
-      <TeacherConstraintsModal open={tcOpen} onClose={() => setTcOpen(false)} />
+      <TeacherConstraintsModal open={tcOpen} focusTeacherId={tcFocus} onClose={() => { setTcOpen(false); setTcFocus(null) }} />
       <ScheduleExportModal open={exportOpen} onClose={() => setExportOpen(false)} runId={runId} />
     </div>
   )
