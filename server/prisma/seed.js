@@ -125,11 +125,10 @@ async function main() {
 
   // ── Foydalanuvchilar (parollar bilan) ──
   // Parol SEED_<LOGIN>_PASSWORD muhit o'zgaruvchisidan (production uchun), bo'lmasa demo parol —
-  // demo parolni production'da albatta almashtiring.
-  // passwordPlain — ochiq nusxa, FAQAT developer (isOwner) hisobiga ko'rinadi.
+  // demo parolni production'da albatta almashtiring. Ochiq parol DB'da saqlanmaydi (faqat hash).
   const withPwd = async (u) => {
-    const passwordPlain = process.env[`SEED_${u.login.toUpperCase()}_PASSWORD`] || DEMO_PASSWORDS[u.login]
-    return { ...u, passwordPlain, passwordHash: await bcrypt.hash(passwordPlain, 10) }
+    const password = process.env[`SEED_${u.login.toUpperCase()}_PASSWORD`] || DEMO_PASSWORDS[u.login]
+    return { ...u, passwordHash: await bcrypt.hash(password, 10) }
   }
   await prisma.user.createMany({
     data: await Promise.all([

@@ -29,8 +29,10 @@ export function crudRouter({
     const where = scopeWhere(req.user) || undefined
     const rows = await delegate.findMany({ where, include, orderBy })
     const q = (req.query.q ?? '').toString().toLowerCase().trim()
-    const filtered = q ? rows.filter((r) => JSON.stringify(r).toLowerCase().includes(q)) : rows
-    res.json(filtered.map((r) => clean(r, req.user)))
+    // Qidiruv sanitize'dan KEYIN — aks holda maxfiy maydonlar (passwordHash) bo'yicha
+    // qidirib, ularni belgima-belgi taxmin qilish mumkin bo'lardi.
+    const cleaned = rows.map((r) => clean(r, req.user))
+    res.json(q ? cleaned.filter((r) => JSON.stringify(r).toLowerCase().includes(q)) : cleaned)
   }))
 
   router.get('/:id', ...readGuard, asyncHandler(async (req, res) => {

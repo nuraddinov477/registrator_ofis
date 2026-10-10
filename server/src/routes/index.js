@@ -15,22 +15,14 @@ import { requireRole, requireDeveloper } from '../auth/middleware.js'
 import { requireWrite, requireRead, scopeWhere as accessScopeWhere, scopeAssert as accessScopeAssert, protectSuperAdminTarget } from '../auth/access.js'
 import { hashPassword } from '../auth/password.js'
 
-// passwordHash HECH KIMGA qaytarilmaydi. passwordPlain (ochiq parol) — FAQAT developer
-// (isOwner) hisobiga; boshqalardan (Super Admin'lar ham) butunlay yashiriladi.
-const stripPassword = (u, user) => {
-  const { passwordHash, passwordPlain, ...rest } = u
-  return user?.isOwner ? { ...rest, passwordPlain } : rest
-}
+// passwordHash HECH KIMGA qaytarilmaydi. Parol ochiq holda saqlanmaydi — unutilgan
+// parolni ko'rish emas, tahrirlash oynasida yangisini o'rnatish kerak.
+const stripPassword = (u) => { const { passwordHash, ...rest } = u; return rest }
 
-// Foydalanuvchi yozishdan oldin: password berilgan bo'lsa hash qilib passwordHash'ga o'tkazamiz.
-// Ayni paytda ochiq nusxasini passwordPlain'ga saqlaymiz — developer ko'rishi uchun (bcrypt
-// bir tomonlama bo'lgani uchun hash'dan asl parolni tiklab bo'lmaydi). password maydoni DB
-// ustuni emas, olib tashlanadi. Bo'sh parolda ikkalasi ham tegilmaydi.
+// Foydalanuvchi yozishdan oldin: password berilgan bo'lsa hash qilib passwordHash'ga o'tkazamiz,
+// password maydonini olib tashlaymiz (u DB ustuni emas). Bo'sh parolda passwordHash tegilmaydi.
 const userTransform = async (data) => {
-  if (data.password) {
-    data.passwordHash = await hashPassword(data.password)
-    data.passwordPlain = data.password
-  }
+  if (data.password) data.passwordHash = await hashPassword(data.password)
   delete data.password
   return data
 }
