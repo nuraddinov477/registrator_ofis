@@ -2,7 +2,16 @@
 
 Ishga tushirish:  python seed.py   (DATABASE_URL muhit o'zgaruvchisi kerak)
 """
+import os
+
 from app.auth import hash_password
+
+# Demo parollar (Node versiyasi bilan bir xil). Production'da SEED_<LOGIN>_PASSWORD bilan almashtiring.
+DEMO_PASSWORDS = {"developer": "developer123", "admin": "admin123", "operator": "operator123"}
+
+
+def password_for(login: str) -> str:
+    return os.environ.get(f"SEED_{login.upper()}_PASSWORD") or DEMO_PASSWORDS[login]
 from app.db import Base, SessionLocal, engine
 from app.models import (AuditLog, Building, Department, Faculty, Group, Room, RoomPermission,
                         ScheduleEntry, SchedulingRun, Specialty, Subject, Teacher, User, Workload, WorkloadGroup)
@@ -113,11 +122,11 @@ def main():
 
         db.add_all([
             User(login="developer", fullName="Developer", role="Super Admin", active=True, isOwner=True,
-                 passwordHash=hash_password("developer123")),
+                 passwordHash=hash_password(password_for("developer"))),
             User(login="admin", fullName="Admin Super", email="admin@university.uz", role="Super Admin", active=True,
-                 passwordHash=hash_password("admin123")),
+                 passwordHash=hash_password(password_for("admin"))),
             User(login="operator", fullName="Egamberdiyev Abduvahob", role="Fakultet operatori", active=True,
-                 passwordHash=hash_password("operator123")),
+                 passwordHash=hash_password(password_for("operator"))),
         ])
         db.commit()
         counts = {

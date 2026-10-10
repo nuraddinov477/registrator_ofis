@@ -2,6 +2,7 @@
 
 Ishga tushirish:  uvicorn app.main:app --host 0.0.0.0 --port 4000
 """
+import json
 import time
 import traceback
 from contextlib import asynccontextmanager
@@ -35,6 +36,7 @@ from .schemas import ValidationFailed
 def bootstrap():
     """Ishga tushganda: jadvallar, developer → isOwner, eski Building.facultyId → faculties backfill."""
     Base.metadata.create_all(engine)
+    _seed_if_requested()
     db = SessionLocal()
     try:
         res = db.execute(update(User).where(User.login == "developer", User.isOwner == False)  # noqa: E712
@@ -55,11 +57,44 @@ def bootstrap():
         if moved:
             db.commit()
             print(f"→ Bootstrap: {moved} ta bino eski facultyId'dan yangi faculties'ga ko'chirildi")
+
+        # Server qayta ishga tushganda to'xtab qolgan generatsiyalar abadiy "running" bo'lib qolmasin
+        from datetime import timedelta
+        from .db import now
+        from .models import SchedulingRun
+        stale = db.scalars(select(SchedulingRun).where(
+            SchedulingRun.status == "running", SchedulingRun.updatedAt < now() - timedelta(minutes=10))).all()
+        for run in stale:
+            run.status = "failed"
+            run.report = json.dumps({"error": "Generatsiya yakunlanmadi (server qayta ishga tushgan) — jadvalni qayta yarating"},
+                                    ensure_ascii=False)
+        if stale:
+            db.commit()
+            print(f"→ Bootstrap: {len(stale)} ta to'xtab qolgan generatsiya 'failed' deb belgilandi")
     except Exception as e:  # noqa: BLE001
         db.rollback()
         print(f"Bootstrap xatosi: {e}")
     finally:
         db.close()
+
+
+def _seed_if_requested():
+    """SEED_ON_START=true va baza BO'SH (foydalanuvchi yo'q) bo'lsa — demo ma'lumot (docker-entrypoint.sh kabi).
+    Seed jadvallarni tozalaydi, shuning uchun faqat bo'sh bazada ishlaydi."""
+    import os
+    if os.environ.get("SEED_ON_START", "false").lower() != "true":
+        return
+    db = SessionLocal()
+    try:
+        has_users = db.query(User).first() is not None
+    finally:
+        db.close()
+    if has_users:
+        print("→ SEED_ON_START: bazada foydalanuvchilar bor — demo ma'lumot yozilmadi")
+        return
+    print("→ Seed (demo ma'lumot)...")
+    import seed  # backend_py/seed.py (Docker'da /app ichida)
+    seed.main()
 
 
 @asynccontextmanager

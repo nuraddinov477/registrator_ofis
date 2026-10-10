@@ -9,7 +9,7 @@ from ..access import MUDIR, OPERATOR, SUPER, AccessError, is_super_admin, restri
 from ..auth import CurrentUser, current_user, require_roles
 from ..crud import client_ip, get_body
 from ..db import audit, get_db
-from ..engine.loaddata import MAIN_HALL_MAX, MAIN_HALL_MIN
+from ..engine.loaddata import LARGE_ROOM_CAPACITY, MAIN_HALL_MAX, MAIN_HALL_MIN, lesson_parts
 from ..models import Department, TeachingRequest, Workload
 from ..serial import to_json
 
@@ -167,23 +167,36 @@ def potok_router() -> APIRouter:
         workloads = db.scalars(select(Workload).where(Workload.semester == sem, Workload.archived == False)).all()  # noqa: E712
         existing = []
         for w in workloads:
-            groups = [x.group for x in w.groups if x.group]
+            groups = [x.group for x in sorted(w.groups, key=lambda x: x.groupId) if x.group]
             if len(groups) <= 1:
                 continue
             total = sum((g.size or 0) for g in groups)
-            fits = MAIN_HALL_MIN <= total <= MAIN_HALL_MAX
-            if fits:
-                note = f"Katta zalga mos ({MAIN_HALL_MIN}-{MAIN_HALL_MAX} oralig'ida)"
+            # Qayerda o'tadi (generatsiya qoidalari bilan bir xil)
+            parts = lesson_parts(groups, w.type or "Amaliy", lambda g: g.size or 0)
+            if len(parts) > 1:
+                placement = "split"
+                note = f"Seminar — sinf ikkiga bo'linadi ({' va '.join(f'{len(p)} guruh, {sum((g.size or 0) for g in p)} talaba' for p in parts)}), har yarmi oddiy xonada"
+            elif MAIN_HALL_MIN <= total <= MAIN_HALL_MAX:
+                placement = "hall"
+                note = f"Katta zalda o'tadi ({MAIN_HALL_MIN}-{MAIN_HALL_MAX} oralig'ida)"
+            elif total <= LARGE_ROOM_CAPACITY:
+                placement = "regular"
+                note = f"Oddiy xonada o'tadi — katta zal uchun {MAIN_HALL_MIN - total} talaba kam"
             elif total < MAIN_HALL_MIN:
-                note = f"Katta zal uchun {MAIN_HALL_MIN - total} talaba yetishmaydi"
+                placement = "between"
+                note = (f"{total} talaba: oddiy xonaga ko'p ({LARGE_ROOM_CAPACITY} gacha), katta zal uchun "
+                        f"{MAIN_HALL_MIN - total} talaba kam — potok tarkibini o'zgartiring")
             else:
-                note = f"Katta zal sig'imidan {total - MAIN_HALL_MAX} talaba ortiqcha"
+                placement = "too_big"
+                note = f"Katta zal sig'imidan {total - MAIN_HALL_MAX} talaba ortiqcha — potokni bo'ling"
             existing.append({
                 "workloadId": w.id, "subject": w.subject.name if w.subject else None,
                 "teacher": w.teacher.fullName if w.teacher else None, "type": w.type,
                 "weeklyHours": w.weeklyHours,
                 "groups": [{"id": g.id, "name": g.name, "size": g.size} for g in groups],
-                "totalSize": total, "fits": fits, "note": note,
+                "totalSize": total, "fits": placement == "hall", "placement": placement,
+                "split": [[g.id for g in p] for p in parts] if len(parts) > 1 else None,
+                "note": note,
             })
         potok_count = len(existing)
         return {

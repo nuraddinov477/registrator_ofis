@@ -1,11 +1,10 @@
-"""Yumshoq cheklashlar (jarimalar) — server/src/engine/constraints.js ning aniq porti."""
-from .timeslots import DAYS, day_of, pair_of
+"""Yumshoq cheklashlar va oynalar — server/src/engine/constraints.js ning aniq porti."""
+from .timeslots import DAYS, PAIRS
 
 # Dars turi tartibi: ma'ruza → seminar → amaliy
 TYPE_RANK = {"Maʼruza": 0, "Seminar": 1, "Amaliy": 2}
 
-# Yumshoq cheklash vaznlari (sozlanadigan)
-W = {
+WEIGHTS = {
     "teacherGap": 20,
     "groupGap": 40,
     "groupGapOverCap": 150,
@@ -27,140 +26,179 @@ W = {
 }
 
 
-def gaps_in_day(pairs, day_start=1):
-    if not pairs:
-        return 0
-    lo, hi = min(pairs), max(pairs)
-    leading = max(0, lo - day_start)
-    internal = (hi - lo + 1) - len(pairs)
-    return leading + internal
+def popcount(x: int) -> int:
+    return bin(x).count("1")
 
 
-def consecutive_penalty(pairs):
-    if len(pairs) < 2:
-        return 0
-    srt = sorted(pairs)
-    run, penalty = 1, 0
-    for i in range(1, len(srt)):
-        if srt[i] == srt[i - 1] + 1:
-            run += 1
-        else:
-            if run > W["MAX_CONSEC"]:
-                penalty += run - W["MAX_CONSEC"]
-            run = 1
-    if run > W["MAX_CONSEC"]:
-        penalty += run - W["MAX_CONSEC"]
-    return penalty
-
-
-def group_cost(group_events) -> float:
-    per_day = [[] for _ in range(DAYS)]
+def group_eval(group_events, day_start=None, W=WEIGHTS):
+    """[yumshoq jarima, qattiq oynalar soni] — JS groupEval bilan bir xil."""
+    per_day = [None] * DAYS
     rooms = set()
     subject_days = {}
-    cost = 0.0
-    # guruhning tanlangan boshlanish juftligi
-    day_start = next((e.startPair for e in group_events if e.slot >= 0), 1)
+    typed = None
+    cost = 0
+    guess_start = day_start is None
+    if guess_start:
+        day_start = 0
     for e in group_events:
-        if e.slot < 0:
+        slot = e.slot
+        if slot < 0:
             continue
-        per_day[day_of(e.slot)].append(e)
-        rooms.add(e.room)
-        subject_days.setdefault(e.subjectId, set()).add(day_of(e.slot))
-
-        if e.assignedRooms and e.room >= 0 and e.room not in e.assignedRooms:  # noqa: E501 (JS: length && ...)
+        if guess_start and not day_start:
+            day_start = e.startPair
+        day, q = slot // PAIRS, slot % PAIRS
+        item = [q, e.subjectId, e.difficulty]
+        if per_day[day] is None:
+            per_day[day] = [item]
+        else:
+            per_day[day].append(item)
+        room = e.room
+        rooms.add(room)
+        subject_days[e.subjectId] = subject_days.get(e.subjectId, 0) | (1 << day)
+        if e.assignedRooms and room >= 0 and room not in e.assignedSet:
             cost += W["assignedRoom"]
-        cap = e.roomCapacities.get(e.room) if e.roomCapacities else None
-        if cap is not None and cap - e.groupSize > 2 and len(e.groupIds) == 1:
-            cost += (cap - e.groupSize - 2) * W["roomFit"]
+        if e.single:
+            cap = e.roomCapacities.get(room)
+            if cap is not None and cap - e.groupSize > 2:
+                cost += (cap - e.groupSize - 2) * W["roomFit"]
+        if e.rank is not None:
+            if typed is None:
+                typed = {}
+            typed.setdefault(e.subjectId, []).append([slot, e.rank])
 
-    counts = []
+    max_consec = W["MAX_CONSEC"]
     weekly_gap = 0
-    for day in per_day:
-        pairs = [pair_of(e.slot) for e in day]
-        counts.append(len(day))
-        weekly_gap += gaps_in_day(pairs, day_start)
-        cost += consecutive_penalty(pairs) * W["consecutive"]
-        if len(day) > 4:
-            cost += (len(day) - 4) * W["groupDayMax"]
-        elif len(day) == 1:
+    inner_gaps = 0
+    squares = 0
+    for items in per_day:
+        if items is None:
+            continue
+        n = len(items)
+        squares += n * n
+        if n == 1:
+            q, _, difficulty = items[0]
+            if q + 1 > day_start:
+                weekly_gap += q + 1 - day_start
             cost += W["groupDayMin"]
-
-        by_subject = {}
-        for e in day:
-            by_subject[e.subjectId] = by_subject.get(e.subjectId, 0) + 1
-        for count in by_subject.values():
-            if count > 1:
-                cost += (count - 1) * W["subjectSpread"]
-
-        day_sorted = sorted(day, key=lambda e: pair_of(e.slot))
-        for i in range(1, len(day_sorted)):
-            p1, p2 = pair_of(day_sorted[i - 1].slot), pair_of(day_sorted[i].slot)
-            if p2 - p1 == 1 and day_sorted[i - 1].subjectId != day_sorted[i].subjectId:
-                cost += W["subjectAdjacent"]
-
-        for e in day:
-            p = pair_of(e.slot)
-            if e.difficulty >= 4 and p > 3:
-                cost += (e.difficulty - 3) * (p - 3) * W["morning"]
+            if difficulty >= 4 and q > 2:
+                cost += (difficulty - 3) * (q - 2) * W["morning"]
+            continue
+        items.sort(key=lambda a: a[0])
+        lo, hi = items[0][0], items[n - 1][0]
+        lead = lo + 1 - day_start
+        distinct = 1
+        for i in range(1, n):
+            if items[i][0] != items[i - 1][0]:
+                distinct += 1
+        inner = hi - lo + 1 - distinct
+        inner_gaps += inner
+        weekly_gap += (lead if lead > 0 else 0) + inner
+        prev_q, prev_subject, difficulty = items[0]
+        morning = (difficulty - 3) * (prev_q - 2) if (difficulty >= 4 and prev_q > 2) else 0
+        subjects = {prev_subject}
+        run, penalty, adjacent = 1, 0, 0
+        for i in range(1, n):
+            q, subject, diff = items[i]
+            if q == prev_q + 1:
+                run += 1
+                if subject != prev_subject:
+                    adjacent += 1
+            else:
+                if run > max_consec:
+                    penalty += run - max_consec
+                run = 1
+            if diff >= 4 and q > 2:
+                morning += (diff - 3) * (q - 2)
+            subjects.add(subject)
+            prev_q = q
+            prev_subject = subject
+        if run > max_consec:
+            penalty += run - max_consec
+        cost += penalty * W["consecutive"] + adjacent * W["subjectAdjacent"] + morning * W["morning"]
+        if n > 4:
+            cost += (n - 4) * W["groupDayMax"]
+        cost += (n - len(subjects)) * W["subjectSpread"]
 
     cost += weekly_gap * weekly_gap * W["groupGap"]
     if weekly_gap > 1:
         cost += (weekly_gap - 1) * W["groupGapOverCap"]
-    cost += sum(c * c for c in counts) * W["groupBalance"] * 0.5
+    cost += squares * W["groupBalance"] * 0.5
     if len(rooms) > 1:
         cost += (len(rooms) - 1) * W["roomChange"]
 
-    for days in subject_days.values():
-        srt = sorted(days)
-        for i in range(1, len(srt)):
-            if srt[i] - srt[i - 1] == 1:
-                cost += W["subjectConsecutiveDays"]
+    for mask in subject_days.values():
+        consecutive_days = mask & (mask >> 1)
+        if consecutive_days:
+            cost += popcount(consecutive_days) * W["subjectConsecutiveDays"]
 
-    by_subject_typed = {}
+    if typed is not None:
+        for items in typed.values():
+            for i in range(len(items)):
+                a_slot, a_rank = items[i]
+                for j in range(i + 1, len(items)):
+                    b_slot, b_rank = items[j]
+                    if a_rank == b_rank:
+                        continue
+                    earlier = a_rank if a_slot < b_slot else b_rank
+                    later = b_rank if a_slot < b_slot else a_rank
+                    if earlier > later:
+                        cost += W["subjectTypeOrder"]
+    return [cost, inner_gaps]
+
+
+def group_cost(group_events, W=WEIGHTS, day_start=None):
+    return group_eval(group_events, day_start, W)[0]
+
+
+def group_gap_pairs(group_events):
+    """kun → darslar orasidagi bo'sh juftliklar (1..6), kunlar o'sish tartibida."""
+    per_day = {}
     for e in group_events:
         if e.slot < 0:
             continue
-        rank = TYPE_RANK.get(e.type)
-        if rank is None:
-            continue
-        by_subject_typed.setdefault(e.subjectId, []).append((e.slot, rank))
-    for evs in by_subject_typed.values():
-        for i in range(len(evs)):
-            for j in range(i + 1, len(evs)):
-                a, b = evs[i], evs[j]
-                if a[1] == b[1]:
-                    continue
-                earlier, later = (a, b) if a[0] < b[0] else (b, a)
-                if earlier[1] > later[1]:
-                    cost += W["subjectTypeOrder"]
-
-    return cost
+        day = e.slot // PAIRS
+        per_day.setdefault(day, set()).add((e.slot % PAIRS) + 1)
+    gaps = {}
+    for day in sorted(per_day):
+        pairs = per_day[day]
+        lo, hi = min(pairs), max(pairs)
+        empty = [p for p in range(lo + 1, hi) if p not in pairs]
+        if empty:
+            gaps[day] = empty
+    return gaps
 
 
-def teacher_cost(teacher_events) -> float:
-    per_day = [[] for _ in range(DAYS)]
+def teacher_cost(teacher_events, W=WEIGHTS) -> float:
+    masks = [0] * DAYS
     for e in teacher_events:
-        if e.slot < 0:
-            continue
-        per_day[day_of(e.slot)].append(e)
-    cost = 0.0
+        if e.slot >= 0:
+            masks[e.slot // PAIRS] |= 1 << (e.slot % PAIRS)
+    cost = 0
     weekly_gap = 0
-    for day in per_day:
-        if not day:
+    for mask in masks:
+        if not mask:
             continue
-        pairs = [pair_of(e.slot) for e in day]
-        weekly_gap += gaps_in_day(pairs)
+        n = popcount(mask)
+        lo = (mask & -mask).bit_length() - 1
+        hi = mask.bit_length() - 1
+        weekly_gap += lo + (hi - lo + 1 - n)
         cost += W["teacherDay"]
-        if len(day) == 1:
+        if n == 1:
             cost += W["lonePair"]
-    cost += weekly_gap * weekly_gap * W["teacherGap"]
-    return cost
+    return cost + weekly_gap * weekly_gap * W["teacherGap"]
 
 
 def total_soft(ctx) -> float:
-    soft = 0.0
-    for evs in ctx.by_group.values():
-        soft += group_cost(evs)
-    for evs in ctx.by_teacher.values():
-        soft += teacher_cost(evs)
+    soft = 0
+    for gid, events in ctx.by_group.items():
+        soft += group_eval(events, ctx.group_start.get(gid))[0]
+    for events in ctx.by_teacher.values():
+        soft += teacher_cost(events)
     return soft
+
+
+def total_gaps(ctx) -> int:
+    gaps = 0
+    for gid, events in ctx.by_group.items():
+        gaps += group_eval(events, ctx.group_start.get(gid))[1]
+    return gaps

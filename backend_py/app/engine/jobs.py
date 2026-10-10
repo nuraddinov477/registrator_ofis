@@ -6,17 +6,21 @@ from sqlalchemy import insert
 
 from ..db import SessionLocal
 from ..models import ScheduleEntry, SchedulingRun
-from .solve import solve
+from .loaddata import load_data_db
+from .solve import solve_context
 
 
-def _run_generation(run_id, semester, max_ms, group_start_pairs, group_end_pairs):
+def solve_db(db, semester=1, max_ms=5000, group_start_pairs=None, group_end_pairs=None, rand=None):
+    ctx = load_data_db(db, semester, group_start_pairs, group_end_pairs)
+    return solve_context(ctx, max_ms=max_ms, rand=rand)
+
+
+def run_generation(run_id, semester, max_ms, group_start_pairs, group_end_pairs):
     db = SessionLocal()
     try:
-        result = solve(db, semester=semester, max_ms=max_ms,
-                       group_start_pairs=group_start_pairs, group_end_pairs=group_end_pairs)
+        result = solve_db(db, semester, max_ms, group_start_pairs, group_end_pairs)
         if result["entries"]:
-            rows = [dict(e, runId=run_id) for e in result["entries"]]
-            db.execute(insert(ScheduleEntry), rows)
+            db.execute(insert(ScheduleEntry), [dict(e, runId=run_id) for e in result["entries"]])
         report = result["report"]
         report_json = json.dumps({
             "unplaced": report["unplaced"],
@@ -30,7 +34,7 @@ def _run_generation(run_id, semester, max_ms, group_start_pairs, group_end_pairs
         run.softScore = report["soft"]
         run.report = report_json
         db.commit()
-    except Exception as exc:  # noqa: BLE001 — har qanday xato run'ni "failed" qiladi
+    except Exception as exc:  # noqa: BLE001
         db.rollback()
         run = db.get(SchedulingRun, run_id)
         if run is not None:
@@ -44,7 +48,7 @@ def _run_generation(run_id, semester, max_ms, group_start_pairs, group_end_pairs
 
 def start_generate_job(run_id, semester, max_ms, group_start_pairs=None, group_end_pairs=None):
     thread = threading.Thread(
-        target=_run_generation,
+        target=run_generation,
         args=(run_id, semester, max_ms, group_start_pairs or {}, group_end_pairs or {}),
         daemon=True,
     )

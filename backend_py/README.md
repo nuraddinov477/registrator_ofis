@@ -39,10 +39,24 @@ Health: `GET /health`, DB tekshiruvi: `GET /health/ready`.
 | `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | AI yordamchi (Claude asosiy, Gemini zaxira) |
 | `RATE_LIMIT_MAX`, `RATE_LIMIT_AUTH_MAX` | so'rov limiti (standart 300 / 20 — 15 daqiqada) |
 
+## Sinov (Node engine bilan bit-bit solishtirish)
+
+Jadval algoritmi `server/src/engine/` (Node) bilan AYNAN bir xil natija beradi. Buni tekshirish:
+
+```bash
+cd backend_py/tests/parity
+node gen.mjs 20 1 ./out                 # 20 ta tasodifiy instance → Node natijalari
+PARITY_DIR=./out python compare.py 1 $(seq 1 20)   # Python port bilan bit-bit solishtirish
+```
+
+`ENGINE_DIR` bilan boshqa Node engine papkasini ko'rsatish mumkin. Natija: `OK` (bir xil) yoki `DIFF`.
+
 ## Deploy (Render)
 
-`render.yaml` endi `backend_py/Dockerfile` ga qaratilgan (eski `server/` deploy'ni almashtiradi).
-`autoDeploy: true` bo'lgani uchun `main` ga push qilinganda deploy avtomatik boshlanadi.
+`render.yaml` `backend_py/Dockerfile` ga qaratilgan. `autoDeploy: true` bo'lgani uchun `main` ga
+push qilinganda deploy avtomatik boshlanadi. Birinchi ishga tushirishda demo ma'lumot kerak bo'lsa
+`SEED_ON_START=true` qo'ying (faqat bo'sh bazaga yozadi). Production'da `SEED_<LOGIN>_PASSWORD`
+bilan demo parollarni almashtiring.
 
 ## Farqlar (Node versiyasiga nisbatan)
 
@@ -51,3 +65,4 @@ Health: `GET /health`, DB tekshiruvi: `GET /health/ready`.
 - Fon jarayoni `worker_threads` o'rniga `threading.Thread` da; `--workers 1` bilan ishlatiladi
   (jadval holati xotirada emas, DB'da saqlanadi, lekin bir nechta worker kerak emas).
 - CLI: `python -m app.engine.cli [semester] [maxMs]` — HTTP'siz jadval generatsiyasi (Node'dagi `npm run solve` o'rniga).
+- Jadval algoritmi (`app/engine/`): greedy → anneal → removeConflicts/reinsert → qat'iy anneal → polishGaps. Node bilan bit-bit mos.
